@@ -35,21 +35,42 @@ Solluga AI/
 ├── .env.example               # Template for environment variables
 ├── .gitignore                 # Excludes .env and other secrets
 ├── requirements.txt           # Python dependencies
+├── run.sh                     # Launch both Telegram bot & Web dashboard
 │
 ├── bot/
 │   ├── __init__.py
 │   ├── main.py                # Telegram bot entry point
-│   ├── handlers.py            # Telegram message/callback handlers
-│   ├── keyboards.py           # Inline keyboard builders (Confirm/Cancel)
+│   ├── handlers.py            # Telegram customer handlers & voice note support
+│   ├── owner_handlers.py      # Telegram owner handlers & callbacks (Phase 2)
+│   ├── keyboards.py           # Inline keyboard builders (Confirm/Cancel, Accept/Reject/Delivered)
 │   ├── session.py             # Per-user conversation state
-│   └── messages.py            # Message templates (multilingual)
+│   └── messages.py            # Message templates (multilingual + owner)
 │
 ├── core/
 │   ├── __init__.py
+│   ├── channel.py             # Channel abstraction interface & FakeChannel (Phase 4)
+│   ├── service.py             # Channel-independent order service (Phase 4)
+│   ├── whatsapp.py            # WhatsApp Cloud API client & webhook parser (Phase 4)
+│   ├── transcription.py       # Voice note speech-to-text with Gemini (Phase 4)
+│   ├── telegram_channel.py    # Telegram Channel adapter (Phase 4)
 │   ├── llm.py                 # LLM wrapper — extraction only
 │   ├── matcher.py             # Alias + fuzzy item matching
 │   ├── order.py               # Order logic: stock check, total, confirm
+│   ├── inventory.py           # Inventory, pricing, sales & reporting logic (Phase 2)
 │   └── db.py                  # DB connection and queries
+│
+├── web/
+│   ├── __init__.py
+│   ├── app.py                 # FastAPI dashboard & WhatsApp webhook routes (Phase 3 & 4)
+│   ├── auth.py                # Session authentication helper (Phase 3)
+│   └── templates/             # Jinja2 templates (mobile-first PicoCSS)
+│       ├── base.html
+│       ├── login.html
+│       ├── home.html
+│       ├── items.html
+│       ├── item_new.html
+│       ├── item_edit.html
+│       └── orders.html
 │
 ├── data/
 │   ├── schema.sql             # Table definitions
@@ -59,6 +80,9 @@ Solluga AI/
     ├── __init__.py
     ├── test_matcher.py        # Tests for item matching
     ├── test_order.py          # Tests for order logic
+    ├── test_inventory.py      # Tests for inventory & owner logic (Phase 2)
+    ├── test_web.py            # Tests for web dashboard routes & auth (Phase 3)
+    ├── test_channels.py       # Tests for Channel abstraction, WhatsApp, & Voice (Phase 4)
     └── test_extraction.py     # Tests for LLM extraction (10 Tanglish samples)
 ```
 
@@ -66,11 +90,13 @@ Solluga AI/
 
 ## Database Schema
 
-| Table        | Key Columns                                              |
-|--------------|----------------------------------------------------------|
-| `items`      | id, name, aliases (JSON), unit, price, stock             |
-| `orders`     | id, customer_id, status, total, created_at               |
-| `order_items`| id, order_id, item_id, quantity, unit_price              |
+| Table            | Key Columns                                              |
+|------------------|----------------------------------------------------------|
+| `shops`          | id, name, slug, owner_id, is_active, created_at          |
+| `items`          | id, shop_id, name, aliases (JSON), unit, price, stock    |
+| `orders`         | id, shop_id, customer_id, status, total, created_at      |
+| `order_items`    | id, order_id, item_id, quantity, unit_price              |
+| `customer_shops` | customer_id, shop_id, updated_at                         |
 
 ---
 
@@ -79,12 +105,17 @@ Solluga AI/
 Configured via `.env`:
 - `LLM_BASE_URL` — OpenAI-compatible endpoint (default: Gemini free tier)
 - `LLM_API_KEY` — API key
-- `LLM_MODEL` — Model name (default: `gemini-2.0-flash`)
+- `LLM_MODEL` — Model name (default: `gemini-2.5-flash-lite`)
+- `LLM_FALLBACK_BASE_URL` — Secondary fallback endpoint
+- `LLM_FALLBACK_API_KEY` — Secondary fallback API key
 
 ---
 
 ## Phase Roadmap
 
-- **Phase 1** ✅ — Core order bot (this phase)
-- **Phase 2** — Shop owner dashboard
-- **Phase 3** — Multi-shop support
+- **Phase 1** ✅ — Core order bot (Telegram)
+- **Phase 2** ✅ — Shop owner bot & alerts
+- **Phase 3** ✅ — Web dashboard
+- **Phase 4** ✅ — WhatsApp & voice notes
+- **Phase 5** ✅ — Multi-shop support, reliability & demo-ready
+

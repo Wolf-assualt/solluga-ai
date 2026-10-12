@@ -6,6 +6,8 @@ replies accordingly. All formatting logic lives here — handlers just call
 these functions.
 """
 
+import re
+from typing import Optional
 from core.order import LineItem, OrderDraft
 
 # ---------------------------------------------------------------------------
@@ -97,14 +99,8 @@ def format_cancelled(user_text: str = "") -> str:
 def format_empty_order(user_text: str = "") -> str:
     tanglish = _is_tanglish(user_text)
     if tanglish:
-        return (
-            "🤔 Order puriyala. Meendum sollunga!\n"
-            "Example: *'2 kg arisi, 1 litre ennai venum'*"
-        )
-    return (
-        "🤔 I couldn't find any items in your message. Please try again!\n"
-        "Example: *'2 kg rice, 1 litre oil please'*"
-    )
+        return "🤔 Order puriyala. Meendum sollunga!"
+    return "🤔 I couldn't find any items in your message. Please try again!"
 
 
 def format_only_unknowns(unknown_items: list[str], user_text: str = "") -> str:
@@ -122,5 +118,152 @@ def format_welcome() -> str:
         "Example:\n"
         "  • *'2 kg arisi, 1 litre ennai venum'*\n"
         "  • *'Anna 3 kg sugar and 1 kg salt please'*\n\n"
+        "💡 *Tip:* Type *'stock'* to see all available items & prices.\n"
         "Type your order below 👇"
     )
+
+
+_STOCK_INQUIRY_PATTERNS = [
+    r"\bstock\b",
+    r"\bstocks\b",
+    r"\bitems\b",
+    r"\bmenu\b",
+    r"\blist\b",
+    r"\bavailable\b",
+    r"enna.*iruk+u",
+    r"kadayila.*enna",
+    r"what.*do you have",
+    r"what.*items",
+    r"what.*available",
+    r"what.*in stock",
+    r"what.*products",
+    r"price.*list",
+    r"item.*list",
+    r"stock.*iruk+a",
+    r"porul.*iruk+u",
+    r"porul.*list",
+]
+
+
+def is_stock_inquiry(text: str) -> bool:
+    """Detect if customer is asking about stock or available items."""
+    t = text.lower().strip()
+    if not t:
+        return False
+    if t in ("/stock", "stock", "/stocks", "stocks", "/items", "items", "/menu", "menu", "list", "/list"):
+        return True
+    if any(re.search(p, t) for p in _STOCK_INQUIRY_PATTERNS):
+        # Don't intercept if user specified clear order quantities with desire verb
+        order_match = re.search(r"\b\d+\s*(?:kg|litre|liter|g|packet|packets|piece|pieces)\b", t)
+        wants_word = re.search(r"\b(?:venum|kudunga|kodu|please|send)\b", t)
+        if order_match and wants_word:
+            return False
+        return True
+    return False
+
+
+def format_customer_stock_list(items: list, shop_name: str = "") -> str:
+    """Format available items for a customer in a friendly Tanglish style."""
+    available = []
+    for it in items:
+        stock_val = it["stock"] if isinstance(it, dict) else getattr(it, "stock", 0)
+        if stock_val > 0:
+            available.append(it)
+
+    if not available:
+        return "📦 Ippo items ethuvum stock la illai. Please check back later!"
+
+    header = f"🏪 *{shop_name} — Available Items & Prices:*\n" if shop_name else "🏪 *Available Items & Prices:*\n"
+    lines = [header]
+
+    for it in available:
+        name = (it["name"] if isinstance(it, dict) else getattr(it, "name", "")).title()
+        unit = it["unit"] if isinstance(it, dict) else getattr(it, "unit", "")
+        price = it["price"] if isinstance(it, dict) else getattr(it, "price", 0.0)
+        stock = it["stock"] if isinstance(it, dict) else getattr(it, "stock", 0.0)
+        lines.append(f"• *{name}* — ₹{price:.2f} / {unit}  _(In Stock: {stock:g} {unit})_")
+
+    lines.append("\n🛒 *Order panna:* Type your order below 👇")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Owner message formatters (Phase 2)
+# ---------------------------------------------------------------------------
+
+def format_stock_list(stock_rows: list) -> str:
+    """Format inventory list with price and stock levels."""
+    if not stock_rows:
+        return "📦 No items in inventory."
+
+    lines = ["📦 *Current Stock & Prices:*"]
+    for row in stock_rows:
+        status_badge = " ⚠️ *LOW*" if row.is_low else ""
+        lines.append(
+            f"• *{row.name.title()}*: {row.stock:g} {row.unit} | ₹{row.price:.2f}/{row.unit}{status_badge}"
+        )
+    return "\n".join(lines)
+
+
+def format_owner_new_order(order_summary, customer_name: str = "") -> str:
+    """Format notification sent to owner when customer confirms an order."""
+    cust_display = customer_name if customer_name else f"Customer `{order_summary.customer_id}`"
+    lines = [
+        f"🔔 *New Confirmed Order #{order_summary.order_id}*",
+        f"👤 *Customer:* {cust_display}",
+        f"🕒 *Time:* {order_summary.created_at}",
+        "\n*Items:*",
+    ]
+    for it in order_summary.items:
+        lines.append(f"  • {it['name'].title()}: {it['qty']:g} {it['unit']} @ ₹{it['unit_price']:.2f}")
+
+    lines.append(f"\n💰 *Total: ₹{order_summary.total:.2f}*")
+    lines.append(f"📌 *Status:* `{order_summary.status.upper()}`")
+    return "\n".join(lines)
+
+
+def format_low_stock_alert(low_items: list) -> str:
+    """Format low-stock alert for the owner."""
+    if not low_items:
+        return ""
+    lines = ["🚨 *Low Stock Alert!*"]
+    for item in low_items:
+        lines.append(f"• *{item.name.title()}*: only {item.stock:g} {item.unit} remaining!")
+    lines.append("\nPlease restock soon using `/addstock <item> <qty>`.")
+    return "\n".join(lines)
+
+
+def format_todays_orders(orders: list) -> str:
+    """Format list of orders created today."""
+    if not orders:
+        return "📋 No orders placed today yet."
+
+    lines = [f"📋 *Today's Orders ({len(orders)}):*"]
+    for o in orders:
+        items_summary = ", ".join(f"{it['qty']:g} {it['unit']} {it['name']}" for it in o.items)
+        lines.append(
+            f"• *#{o.order_id}* ({o.status}) - ₹{o.total:.2f}\n"
+            f"   Customer: `{o.customer_id}` | {items_summary or 'No items'}"
+        )
+    return "\n".join(lines)
+
+
+def format_todays_sales(total_sales: float, order_count: int) -> str:
+    """Format total sales for today."""
+    return (
+        f"📊 *Today's Sales Summary*\n\n"
+        f"• Total Orders (confirmed/accepted/delivered): *{order_count}*\n"
+        f"• Total Sales Amount: *₹{total_sales:.2f}*"
+    )
+
+
+def format_customer_status_update(order_id: int, new_status: str) -> str:
+    """Notification sent to customer when owner changes order status."""
+    if new_status == "accepted":
+        return f"🎉 *Order Update:* Your order #{order_id} has been *ACCEPTED* by the shop owner! It is being prepared."
+    elif new_status == "rejected":
+        return f"⚠️ *Order Update:* Your order #{order_id} has been *CANCELLED / REJECTED* by the shop. Please contact the shop if you have questions."
+    elif new_status == "delivered":
+        return f"🚚 *Order Update:* Your order #{order_id} has been *DELIVERED*! Thank you for ordering with us! 🙏"
+    return f"ℹ️ *Order Update:* Order #{order_id} status changed to *{new_status.upper()}*."
+

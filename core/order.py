@@ -39,11 +39,11 @@ class OrderDraft:
         return bool(self.unknown_items) or any(li.stock_short for li in self.lines)
 
 
-def process_message(message: str) -> OrderDraft:
+def process_message(message: str, shop_id: Optional[int] = None) -> OrderDraft:
     """
     Full pipeline for a customer message:
       1. Extract items via LLM
-      2. Match to DB items
+      2. Match to DB items for this specific shop
       3. Check stock
       4. Compute totals
 
@@ -56,8 +56,8 @@ def process_message(message: str) -> OrderDraft:
     if not extracted:
         return draft  # nothing to process
 
-    # Step 2: Load DB items and match
-    db_items = get_all_items()
+    # Step 2: Load DB items for target shop and match
+    db_items = get_all_items(shop_id=shop_id)
     matches = match_all(extracted, db_items)
 
     # Step 3 & 4: Stock check + total
@@ -96,9 +96,9 @@ def process_message(message: str) -> OrderDraft:
     return draft
 
 
-def confirm_order(customer_id: str, draft: OrderDraft) -> int:
+def confirm_order(customer_id: str, draft: OrderDraft, shop_id: int = 1) -> int:
     """
-    Persist the confirmed order and deduct stock.
+    Persist the confirmed order and deduct stock for the shop.
     Returns the saved order_id.
     """
     if not draft.lines:
@@ -116,5 +116,7 @@ def confirm_order(customer_id: str, draft: OrderDraft) -> int:
         customer_id=customer_id,
         line_items=line_items,
         total=draft.total,
+        shop_id=shop_id,
     )
     return order_id
+

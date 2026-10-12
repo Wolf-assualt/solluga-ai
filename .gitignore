@@ -26,9 +26,10 @@ data/*.db-journal
 data/*.db-shm
 data/*.db-wal
 
-# Logs
+# Logs and binaries
 *.log
 logs/
+bin/
 
 # IDE / OS
 .idea/

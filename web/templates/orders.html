@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Orders — Sollunga{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+  <h3 style="margin-bottom: 0;">📋 Orders</h3>
+</div>
+
+<!-- Filters Bar -->
+<article style="padding: 1rem 1.25rem; margin-bottom: 1.5rem;">
+  <form method="GET" action="/orders" style="margin-bottom: 0;">
+    <div class="grid" style="align-items: end;">
+      <label for="status">
+        Filter Status
+        <select id="status" name="status" onchange="this.form.submit()">
+          <option value="all" {% if current_status == "all" %}selected{% endif %}>All Statuses</option>
+          <option value="confirmed" {% if current_status == "confirmed" %}selected{% endif %}>Confirmed</option>
+          <option value="accepted" {% if current_status == "accepted" %}selected{% endif %}>Accepted</option>
+          <option value="delivered" {% if current_status == "delivered" %}selected{% endif %}>Delivered</option>
+          <option value="rejected" {% if current_status == "rejected" %}selected{% endif %}>Rejected</option>
+          <option value="cancelled" {% if current_status == "cancelled" %}selected{% endif %}>Cancelled</option>
+        </select>
+      </label>
+
+      <label for="date">
+        Filter Date
+        <select id="date" name="date" onchange="this.form.submit()">
+          <option value="all" {% if current_date == "all" %}selected{% endif %}>All Time</option>
+          <option value="today" {% if current_date == "today" %}selected{% endif %}>Today Only</option>
+        </select>
+      </label>
+
+      <div>
+        <button type="submit" class="outline btn-sm" style="width: 100%;">Apply</button>
+      </div>
+    </div>
+  </form>
+</article>
+
+<!-- Orders Table -->
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Order #</th>
+        <th>Date & Time</th>
+        <th>Customer</th>
+        <th>Items</th>
+        <th>Total</th>
+        <th>Status</th>
+        <th>Change Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ord in orders %}
+      <tr>
+        <td><strong>#{{ ord.order_id }}</strong></td>
+        <td style="font-size: 0.85rem; color: var(--pico-muted-color);">{{ ord.created_at }}</td>
+        <td><code>{{ ord.customer_id }}</code></td>
+        <td>
+          {% for it in ord.items %}
+          <div>• {{ it.qty }} {{ it.unit }} {{ it.name }} (@ ₹{{ "%.2f"|format(it.unit_price) }})</div>
+          {% endfor %}
+        </td>
+        <td><strong>₹{{ "%.2f"|format(ord.total) }}</strong></td>
+        <td>
+          <span class="badge badge-{{ ord.status }}">{{ ord.status }}</span>
+        </td>
+        <td>
+          <div class="action-btns">
+            {% if ord.status == "confirmed" %}
+            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+              <input type="hidden" name="status" value="accepted">
+              <button type="submit" class="btn-sm btn-success">Accept</button>
+            </form>
+            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+              <input type="hidden" name="status" value="rejected">
+              <button type="submit" class="btn-sm btn-danger">Reject</button>
+            </form>
+            {% elif ord.status == "accepted" %}
+            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+              <input type="hidden" name="status" value="delivered">
+              <button type="submit" class="btn-sm btn-success">Delivered</button>
+            </form>
+            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+              <input type="hidden" name="status" value="rejected">
+              <button type="submit" class="btn-sm btn-danger">Reject</button>
+            </form>
+            {% elif ord.status == "delivered" %}
+            <span style="font-size: 0.85rem; color: var(--pico-muted-color);">Completed</span>
+            {% elif ord.status == "rejected" or ord.status == "cancelled" %}
+            <span style="font-size: 0.85rem; color: var(--pico-muted-color);">Closed</span>
+            {% else %}
+            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+              <input type="hidden" name="status" value="accepted">
+              <button type="submit" class="btn-sm">Accept</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--pico-muted-color); padding: 2rem;">
+          No orders found matching the filter criteria.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

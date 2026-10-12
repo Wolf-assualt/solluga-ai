@@ -1,146 +1,225 @@
-# Sollunga — AI Order Bot for Local Indian Shops
+# Sollunga AI — Intelligent Grocery Order Bot & Store Management
 
-> **"Sollunga"** means *"Tell me"* in Tamil.
+> **"Sollunga"** (*சொல்லுங்க*) means *"Tell me"* in Tamil.
 
-A Telegram bot that lets customers order groceries in Tamil, English, or Tanglish. It understands natural language, checks stock, shows prices, and confirms orders — all powered by Gemini (free tier).
+**Sollunga AI** is an AI-powered, omnichannel order-taking bot and shop management platform built for local Indian retail and kirana stores. Customers can order groceries naturally via **Telegram** or **WhatsApp** using **Tamil, English, Tanglish, or Voice Notes**, receiving immediate, deterministic price quotes and stock confirmations. 
 
----
-
-## Features
-
-- 🗣️ **Multilingual** — Tamil, English, Tanglish
-- 🤖 **AI extraction** — Gemini extracts items/quantities; Python handles all pricing and stock
-- 📦 **Stock awareness** — automatically caps quantities if stock is low
-- ✅ **One-tap confirm** — inline Confirm / Cancel buttons
-- 🗄️ **SQLite** — zero-config database with persistent orders
+Shop owners manage their store via real-time Telegram alerts or a sleek, mobile-first **FastAPI Web Dashboard**.
 
 ---
 
-## Quick Start
+## 🏗️ System Architecture
 
-### 1. Prerequisites
+```mermaid
+flowchart TD
+    subgraph Channels["Omnichannel Customer Ingestion"]
+        TG["Telegram Bot\n(Text & Voice Notes)"]
+        WA["WhatsApp Cloud API\n(Text & Audio Notes)"]
+        WEB["FastAPI Web Dashboard\n(Owner Admin)"]
+    end
 
-- Python 3.11+
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey) (free)
+    subgraph CoreLayer["Unified Core Engine"]
+        ADAPT["Channel Adapters\n(TelegramChannel / WhatsAppChannel)"]
+        SVC["Order Service\n(Routing & Multi-Shop Sessions)"]
+        
+        subgraph AI["AI Layer (Extraction Only)"]
+            STT["Voice Transcription\n(Gemini Multimodal Audio)"]
+            LLM["Entity Extractor\n(OpenAI-Compatible Gemini / Fallback)"]
+        end
 
-### 2. Clone and set up
+        subgraph BusinessLogic["Deterministic Python Logic"]
+            MATCHER["Alias & Fuzzy Matcher\n(Tamil/Tanglish transliterations)"]
+            ORDER["Stock Checker & Pricing\n(Strict Python Math)"]
+            INV["Inventory & Sales Engine"]
+        end
+    end
+
+    subgraph DataLayer["Storage & Alerts"]
+        DB[("SQLite Database\n(Shops, Items, Orders)")]
+        ALERT["Owner Telegram Bot\n(Accept/Reject/Delivered + Low Stock)"]
+    end
+
+    TG --> ADAPT
+    WA --> ADAPT
+    ADAPT --> SVC
+    SVC --> STT
+    STT --> LLM
+    SVC --> LLM
+    LLM --> MATCHER
+    MATCHER --> ORDER
+    ORDER --> DB
+    ORDER --> ALERT
+    WEB --> INV
+    INV --> DB
+```
+
+---
+
+## ✨ Key Features
+
+- 🗣️ **Omnichannel & Multilingual:** Natural conversations in Tamil, English, or Tanglish across Telegram and WhatsApp.
+- 🎙️ **Voice Note Orders:** Send voice notes in Tamil or English — automatically transcribed with Gemini audio processing.
+- 🛡️ **Zero-Hallucination Pricing:** The LLM **ONLY** extracts items and units. Price calculation, inventory deduction, and totals are computed strictly in Python.
+- 🏪 **Multi-Shop Ready:** Switch between multiple neighborhood stores using `/shops` or `/shop <id>`.
+- ⚠️ **Smart Stock Protection:** Automatically detects out-of-stock items, caps quantities if stock is low, and dispatches real-time low-stock alerts to shop owners.
+- 📱 **Interactive Order Actions:** Customers confirm or cancel orders with one tap. Owners receive interactive Telegram buttons: `[Accept]`, `[Delivered]`, `[Reject]`.
+- 📊 **Mobile-First Web Dashboard:** Fast, lightweight FastAPI + Jinja2 dashboard for inventory management, real-time sales metrics, and order fulfillment.
+- ⚡ **Resilient AI Pipeline:** Configurable timeouts, automatic retries with exponential backoff, and seamless fallback to a secondary LLM provider.
+
+---
+
+## 🚀 Setup in 5 Minutes
+
+### 1. Clone & Set Up Virtual Environment
 
 ```bash
 git clone <repo-url>
 cd "Solluga AI"
 
-# Create virtual environment
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-# Install dependencies
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment
+### 2. Configure Environment
+
+Copy `.env.example` to `.env` and fill in your keys:
 
 ```bash
 cp .env.example .env
-# Edit .env and fill in your keys:
-#   TELEGRAM_BOT_TOKEN=...
-#   LLM_API_KEY=...        (Gemini API key)
-#   LLM_MODEL=gemini-2.0-flash
 ```
 
-### 4. Seed the database
+Minimal required variables in `.env`:
+```ini
+# Telegram Bot Token (from @BotFather)
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+
+# Gemini API Key (from Google AI Studio - free tier)
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+LLM_API_KEY=AIzaSy...
+LLM_MODEL=gemini-2.5-flash-lite
+
+# Owner Telegram User ID (get via @userinfobot)
+OWNER_TELEGRAM_ID=123456789
+LOW_STOCK_THRESHOLD=3
+
+# Dashboard Password
+DASHBOARD_PASSWORD=sollunga123
+SECRET_KEY=super-secret-key-change-me
+```
+
+### 3. Seed Realistic Kirana Store Data
 
 ```bash
 python data/seed.py
 ```
+*Seeds 2 sample shops ("Karthik Maligai Store" and "Murugan Provisions") with authentic South Indian groceries, aliases, and prices.*
 
-You'll see 6 items seeded: rice, sugar, oil, dal, salt, wheat flour.
+### 4. Launch Bot & Web Dashboard Together
 
-### 5. Run the bot
+Run the included convenience script:
+```bash
+./run.sh
+```
+
+Or run services individually:
+```bash
+# Terminal 1: Telegram Bot
+python bot/main.py
+
+# Terminal 2: Web Dashboard & WhatsApp Webhook
+uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Visit the Web Dashboard at: **`http://localhost:8000`** (Password: `sollunga123`)  
+System health status: **`http://localhost:8000/health`**
+
+---
+
+## 🐳 Docker Deployment
+
+Run the complete Sollunga stack containerized:
 
 ```bash
-python -m bot.main
-```
+# Build the Docker image
+docker build -t sollunga-ai .
 
-Open Telegram, find your bot, and send:
-> `Anna 2 kg arisi, 1 litre ennai venum`
+# Run the container
+docker run -p 8000:8000 --env-file .env sollunga-ai
+```
 
 ---
 
-## Running Tests
+## 📲 WhatsApp Cloud API Setup (Optional)
+
+1. Go to the [Meta Developer Portal](https://developers.facebook.com/) and create a WhatsApp Business App.
+2. In the WhatsApp API Setup page, obtain your **Test Phone Number ID** and **Temporary Access Token**.
+3. Set your webhook URL using Cloudflare Tunnel or ngrok:
+   ```bash
+   ngrok http 8000
+   ```
+4. In the Meta Developer App Dashboard under WhatsApp Webhook:
+   - **Callback URL:** `https://<your-ngrok-url>/whatsapp/webhook`
+   - **Verify Token:** Set to match `WHATSAPP_VERIFY_TOKEN` in `.env` (default: `sollunga_verify_token`).
+   - Subscribe to the `messages` event field.
+
+---
+
+## 📸 Screenshots & UI Previews
+
+### Customer Telegram & WhatsApp Ordering
+```
+Customer: "Anna 2 kg ponni arisi and 1 litre oil venum"
+Sollunga: 
+  🛒 Order Summary (Karthik Maligai Store):
+  • rice (2.0 kg) — ₹110.00
+  • oil (1.0 litre) — ₹150.00
+  
+  Total: ₹260.00
+  [✅ Confirm Order]   [❌ Cancel]
+```
+
+### Shop Owner Telegram Notification
+```
+🔔 New Order #1 received!
+Customer: 9876543210
+Shop: Karthik Maligai Store
+Items:
+• rice: 2.0 kg @ ₹55.00
+• oil: 1.0 litre @ ₹150.00
+Total: ₹260.00
+
+[Accept]   [Delivered]   [Reject]
+```
+
+### Mobile Web Dashboard (`http://localhost:8000`)
+- **Dashboard Home:** Today's Orders, Today's Sales Revenue (₹), Low-stock alerts badge.
+- **Items Catalog:** Real-time stock counts, price adjustments, and item creation.
+- **Orders Manager:** Filter by status (`pending`, `accepted`, `delivered`, `rejected`), with single-click fulfillment.
+
+---
+
+## 🧪 Running Tests
+
+The test suite covers LLM entity extraction, fuzzy alias matching, inventory calculations, multi-shop isolation, channel mocks, and API routes.
 
 ```bash
-# All tests (no LLM calls — everything is mocked)
-pytest tests/ -v
-
-# Specific test files
-pytest tests/test_matcher.py -v
-pytest tests/test_order.py -v
-pytest tests/test_extraction.py -v
+pytest -v
 ```
+
+All 93 tests run without external network calls using deterministic mocks and test fixtures.
 
 ---
 
-## Project Structure
+## ⚠️ Known Limitations
 
-```
-Solluga AI/
-├── AGENTS.md          # AI agent rules and architecture
-├── .env.example       # Environment variable template
-├── requirements.txt
-│
-├── bot/               # Telegram bot layer
-│   ├── main.py        # Entry point
-│   ├── handlers.py    # Message & callback handlers
-│   ├── keyboards.py   # Inline Confirm/Cancel buttons
-│   ├── session.py     # Per-user draft storage
-│   └── messages.py    # Multilingual message formatters
-│
-├── core/              # Business logic (no Telegram here)
-│   ├── llm.py         # LLM wrapper — extraction only
-│   ├── matcher.py     # Alias + fuzzy item matching
-│   ├── order.py       # Order pipeline: stock check, totals
-│   └── db.py          # SQLite queries
-│
-├── data/
-│   ├── schema.sql     # Table definitions
-│   └── seed.py        # Sample data seeder
-│
-└── tests/
-    ├── test_matcher.py    # Alias + fuzzy matching tests
-    ├── test_order.py      # Order logic tests
-    └── test_extraction.py # LLM parsing tests (10 Tanglish samples)
-```
+1. **SQLite Write Concurrency:** SQLite handles tens of thousands of reads with ease, but uses database-level locking on writes. For large production deployments spanning hundreds of simultaneous shops, migrate `core/db.py` to PostgreSQL.
+2. **WhatsApp 24-Hour Messaging Window:** Meta imposes a 24-hour customer service window on WhatsApp for inbound sessions. Out-of-session owner notifications to customers require pre-approved Meta message templates.
+3. **LLM Provider Free Quotas:** Google Gemini free tier rate limits (15 RPM) can be reached under heavy burst traffic. Sollunga handles this via automatic retries and failover to `LLM_FALLBACK_BASE_URL`.
+4. **Voice Audio Formats:** WhatsApp uses `.ogg` (Opus) audio notes while Telegram voice notes use `.oga`. FFmpeg is required on the host system to process raw audio buffers.
 
 ---
 
-## Switching LLM Providers
+## 📜 License
 
-Edit `.env` — any OpenAI-compatible endpoint works:
-
-```env
-# OpenAI
-LLM_BASE_URL=https://api.openai.com/v1/
-LLM_MODEL=gpt-4o-mini
-
-# Groq
-LLM_BASE_URL=https://api.groq.com/openai/v1/
-LLM_MODEL=llama-3.1-8b-instant
-
-# Ollama (local)
-LLM_BASE_URL=http://localhost:11434/v1/
-LLM_MODEL=llama3.2
-LLM_API_KEY=ollama
-```
-
----
-
-## Sample Orders to Try
-
-| Message | Language |
-|---------|----------|
-| `Anna 2 kg arisi, 1 litre ennai venum` | Tanglish |
-| `3 kg sakkarai kudunga` | Tamil |
-| `I need 5 kg rice and 2 kg sugar please` | English |
-| `oru litre ennai, randu kg uppu` | Tamil |
-| `paruppu 2 kg, maida 1 kg venum bro` | Tanglish |
+MIT License — free for local shop owners and open-source contributions.

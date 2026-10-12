@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Login — Sollunga Dashboard{% endblock %}
+
+{% block content %}
+<article style="max-width: 420px; margin: 3rem auto; padding: 2rem;">
+  <div style="text-align: center; margin-bottom: 1.5rem;">
+    <h2>🏪 Sollunga</h2>
+    <p style="color: var(--pico-muted-color);">Shop Owner Dashboard</p>
+  </div>
+
+  <form method="POST" action="/login">
+    <label for="password">
+      Owner Password
+      <input 
+        type="password" 
+        id="password" 
+        name="password" 
+        placeholder="Enter dashboard password" 
+        required 
+        autofocus 
+      />
+    </label>
+
+    <button type="submit" style="width: 100%; margin-top: 1rem;">Sign In</button>
+  </form>
+</article>
+{% endblock %}

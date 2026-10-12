@@ -46,13 +46,79 @@ def get_conn() -> Generator[sqlite3.Connection, None, None]:
 
 
 # ---------------------------------------------------------------------------
+# Shop queries (Phase 5: Multi-shop)
+# ---------------------------------------------------------------------------
+
+def get_all_shops() -> list[dict]:
+    """Return all active shops."""
+    with get_conn() as con:
+        # Check if shops table exists
+        cur = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='shops'")
+        if not cur.fetchone():
+            return [{"id": 1, "name": "Default Kirana Store", "slug": "default", "owner_id": "", "is_active": 1}]
+        rows = con.execute("SELECT * FROM shops WHERE is_active = 1 ORDER BY id").fetchall()
+        if not rows:
+            return [{"id": 1, "name": "Default Kirana Store", "slug": "default", "owner_id": "", "is_active": 1}]
+        return [dict(r) for r in rows]
+
+
+def get_shop_by_id(shop_id: int = 1) -> Optional[dict]:
+    """Return shop details by shop_id."""
+    with get_conn() as con:
+        cur = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='shops'")
+        if not cur.fetchone():
+            return {"id": 1, "name": "Default Kirana Store", "slug": "default", "owner_id": "", "is_active": 1}
+        row = con.execute("SELECT * FROM shops WHERE id = ?", (shop_id,)).fetchone()
+        if row is None:
+            return {"id": 1, "name": "Default Kirana Store", "slug": "default", "owner_id": "", "is_active": 1}
+        return dict(row)
+
+
+def get_customer_shop_id(customer_id: str) -> int:
+    """Get the shop_id linked to this customer, defaulting to 1."""
+    with get_conn() as con:
+        cur = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customer_shops'")
+        if not cur.fetchone():
+            return 1
+        row = con.execute("SELECT shop_id FROM customer_shops WHERE customer_id = ?", (customer_id,)).fetchone()
+        return row["shop_id"] if row else 1
+
+
+def set_customer_shop_id(customer_id: str, shop_id: int) -> None:
+    """Link customer to a selected shop."""
+    with get_conn() as con:
+        con.execute(
+            """
+            INSERT INTO customer_shops (customer_id, shop_id, updated_at)
+            VALUES (?, ?, datetime('now', 'localtime'))
+            ON CONFLICT(customer_id) DO UPDATE SET
+                shop_id = excluded.shop_id,
+                updated_at = excluded.updated_at
+            """,
+            (customer_id, shop_id),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Item queries
 # ---------------------------------------------------------------------------
 
-def get_all_items() -> list[dict]:
-    """Return all items as plain dicts (aliases decoded from JSON)."""
+def get_all_items(shop_id: Optional[int] = None) -> list[dict]:
+    """Return all items for a shop (or all items if shop_id is None)."""
     with get_conn() as con:
-        rows = con.execute("SELECT * FROM items").fetchall()
+        # Check if shop_id column exists
+        has_shop_col = False
+        pragma = con.execute("PRAGMA table_info(items)").fetchall()
+        for col in pragma:
+            if col["name"] == "shop_id":
+                has_shop_col = True
+                break
+
+        if has_shop_col and shop_id is not None:
+            rows = con.execute("SELECT * FROM items WHERE shop_id = ?", (shop_id,)).fetchall()
+        else:
+            rows = con.execute("SELECT * FROM items").fetchall()
+
     result = []
     for row in rows:
         d = dict(row)
@@ -93,13 +159,20 @@ def deduct_stock(item_id: int, quantity: float) -> None:
 # Order queries
 # ---------------------------------------------------------------------------
 
-def create_order(customer_id: str) -> int:
+def create_order(customer_id: str, shop_id: int = 1) -> int:
     """Create a pending order and return its ID."""
     with get_conn() as con:
-        cur = con.execute(
-            "INSERT INTO orders (customer_id, status, total) VALUES (?, 'pending', 0)",
-            (customer_id,),
-        )
+        has_shop_col = any(col["name"] == "shop_id" for col in con.execute("PRAGMA table_info(orders)").fetchall())
+        if has_shop_col:
+            cur = con.execute(
+                "INSERT INTO orders (customer_id, shop_id, status, total) VALUES (?, ?, 'pending', 0)",
+                (customer_id, shop_id),
+            )
+        else:
+            cur = con.execute(
+                "INSERT INTO orders (customer_id, status, total) VALUES (?, 'pending', 0)",
+                (customer_id,),
+            )
         return cur.lastrowid
 
 
@@ -123,20 +196,27 @@ def save_confirmed_order(
     customer_id: str,
     line_items: list[dict],  # [{"item_id", "quantity", "unit_price"}, ...]
     total: float,
+    shop_id: int = 1,
 ) -> int:
     """
     Atomically create an order, insert line items, update stock, and mark confirmed.
     Returns the new order_id.
     """
     with get_conn() as con:
-        cur = con.execute(
-            "INSERT INTO orders (customer_id, status, total) VALUES (?, 'confirmed', ?)",
-            (customer_id, total),
-        )
+        has_shop_col = any(col["name"] == "shop_id" for col in con.execute("PRAGMA table_info(orders)").fetchall())
+        if has_shop_col:
+            cur = con.execute(
+                "INSERT INTO orders (customer_id, shop_id, status, total) VALUES (?, ?, 'confirmed', ?)",
+                (customer_id, shop_id, total),
+            )
+        else:
+            cur = con.execute(
+                "INSERT INTO orders (customer_id, status, total) VALUES (?, 'confirmed', ?)",
+                (customer_id, total),
+            )
         order_id = cur.lastrowid
 
         for li in line_items:
-            # Verify stock
             row = con.execute(
                 "SELECT stock FROM items WHERE id = ?", (li["item_id"],)
             ).fetchone()
@@ -159,3 +239,4 @@ def save_confirmed_order(
             )
 
     return order_id
+

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Sollunga Dashboard{% endblock %}</title>
+  <!-- Simple, lightweight modern CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    :root {
+      --primary: #1e88e5;
+      --primary-hover: #1565c0;
+    }
+    body {
+      font-size: 16px;
+      padding-bottom: 3rem;
+    }
+    header.dashboard-header {
+      border-bottom: 1px solid var(--pico-muted-border-color);
+      margin-bottom: 1.5rem;
+      padding: 0.75rem 0;
+    }
+    .nav-brand {
+      font-weight: 700;
+      font-size: 1.25rem;
+      text-decoration: none;
+      color: var(--primary);
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-confirmed { background-color: #e3f2fd; color: #1565c0; }
+    .badge-accepted { background-color: #fff8e1; color: #f57f17; }
+    .badge-delivered { background-color: #e8f5e9; color: #2e7d32; }
+    .badge-rejected { background-color: #ffebee; color: #c62828; }
+    .badge-cancelled { background-color: #eceff1; color: #546e7a; }
+    .badge-low { background-color: #ffebee; color: #c62828; }
+    
+    .stat-card {
+      background: var(--pico-card-background-color);
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 8px;
+      padding: 1.2rem;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .stat-num {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin: 0.25rem 0;
+    }
+    .stat-label {
+      font-size: 0.9rem;
+      color: var(--pico-muted-color);
+    }
+    .table-container {
+      overflow-x: auto;
+    }
+    .action-btns {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .btn-sm {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.85rem;
+      margin-bottom: 0;
+    }
+    .btn-danger {
+      background-color: #d32f2f;
+      border-color: #d32f2f;
+    }
+    .btn-success {
+      background-color: #2e7d32;
+      border-color: #2e7d32;
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  {% if user %}
+  <header class="container dashboard-header">
+    <nav>
+      <ul>
+        <li><a href="/" class="nav-brand">🏪 Sollunga</a></li>
+      </ul>
+      <ul>
+        <li><a href="/" {% if request.url.path == "/" %}aria-current="page"{% endif %}>Home</a></li>
+        <li><a href="/items" {% if request.url.path.startswith("/items") %}aria-current="page"{% endif %}>Items</a></li>
+        <li><a href="/orders" {% if request.url.path.startswith("/orders") %}aria-current="page"{% endif %}>Orders</a></li>
+        <li><a href="/logout" role="button" class="outline btn-sm">Logout</a></li>
+      </ul>
+    </nav>
+  </header>
+  {% endif %}
+
+  <main class="container">
+    {% if error %}
+    <div style="background-color: #ffebee; color: #c62828; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem;">
+      {{ error }}
+    </div>
+    {% endif %}
+    {% if success %}
+    <div style="background-color: #e8f5e9; color: #2e7d32; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem;">
+      {{ success }}
+    </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

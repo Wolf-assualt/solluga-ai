@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Items — Sollunga{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+  <h3 style="margin-bottom: 0;">📦 Inventory Items</h3>
+  <a href="/items/new" role="button" class="btn-sm">+ Add New Item</a>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Item Name</th>
+        <th>Unit</th>
+        <th>Price (₹)</th>
+        <th>Stock</th>
+        <th>Aliases</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.id }}</td>
+        <td>
+          <strong>{{ item.name|capitalize }}</strong>
+          {% if item.is_low %}
+          <span class="badge badge-low" style="margin-left: 0.3rem;">Low</span>
+          {% endif %}
+        </td>
+        <td>{{ item.unit }}</td>
+        <td>₹{{ "%.2f"|format(item.price) }}</td>
+        <td>
+          <strong>{{ item.stock }}</strong>
+        </td>
+        <td style="font-size: 0.85rem; color: var(--pico-muted-color);">
+          {{ item.aliases|join(", ") }}
+        </td>
+        <td>
+          <div class="action-btns">
+            <a href="/items/edit/{{ item.id }}" role="button" class="outline btn-sm">Edit</a>
+            <form method="POST" action="/items/delete/{{ item.id }}" onsubmit="return confirm('Are you sure you want to delete {{ item.name }}?');" style="display:inline; margin:0;">
+              <button type="submit" class="outline btn-sm btn-danger" style="color: #d32f2f; border-color: #d32f2f;">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

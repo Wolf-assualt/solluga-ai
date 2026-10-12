@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Add New Item — Sollunga{% endblock %}
+
+{% block content %}
+<article style="max-width: 580px; margin: 1rem auto; padding: 2rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h3 style="margin-bottom: 0;">➕ Add New Item</h3>
+    <a href="/items" role="button" class="outline btn-sm">Back</a>
+  </div>
+
+  <form method="POST" action="/items/new">
+    <label for="name">
+      Item Name (English / Canonical)
+      <input type="text" id="name" name="name" placeholder="e.g. tea powder" required>
+    </label>
+
+    <div class="grid">
+      <label for="unit">
+        Unit
+        <input type="text" id="unit" name="unit" placeholder="e.g. kg, litre, packet, piece" required>
+      </label>
+      <label for="price">
+        Price per unit (₹)
+        <input type="number" step="0.01" min="0.01" id="price" name="price" placeholder="45.00" required>
+      </label>
+    </div>
+
+    <label for="stock">
+      Initial Stock
+      <input type="number" step="any" min="0" id="stock" name="stock" placeholder="20" required>
+    </label>
+
+    <label for="aliases">
+      Aliases / Keywords (comma-separated Tamil, Tanglish, synonyms)
+      <input type="text" id="aliases" name="aliases" placeholder="e.g. tea, chaya, theila, tea packet">
+      <small style="color: var(--pico-muted-color);">Used by the AI matcher when customers order.</small>
+    </label>
+
+    <button type="submit" style="margin-top: 1rem; width: 100%;">Create Item</button>
+  </form>
+</article>
+{% endblock %}

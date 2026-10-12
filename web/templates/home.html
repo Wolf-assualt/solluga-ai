@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Sollunga{% endblock %}
+
+{% block content %}
+<div class="grid" style="margin-bottom: 2rem;">
+  <div class="stat-card">
+    <div class="stat-label">Today's Orders</div>
+    <div class="stat-num">{{ today_orders_count }}</div>
+    <div class="stat-label">Placed today</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Today's Sales</div>
+    <div class="stat-num">₹{{ "%.2f"|format(today_sales) }}</div>
+    <div class="stat-label">Confirmed / Delivered</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Low Stock Items</div>
+    <div class="stat-num" style="color: {% if low_stock_items %}#d32f2f{% else %}var(--primary){% endif %};">
+      {{ low_stock_items|length }}
+    </div>
+    <div class="stat-label">Threshold: ≤ {{ low_threshold }}</div>
+  </div>
+</div>
+
+<!-- Low Stock Section -->
+{% if low_stock_items %}
+<section style="margin-bottom: 2.5rem;">
+  <h4 style="color: #c62828;">🚨 Low-Stock Alerts</h4>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Available Stock</th>
+          <th>Price</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in low_stock_items %}
+        <tr>
+          <td><strong>{{ item.name|capitalize }}</strong></td>
+          <td><span class="badge badge-low">{{ item.stock }} {{ item.unit }}</span></td>
+          <td>₹{{ "%.2f"|format(item.price) }} / {{ item.unit }}</td>
+          <td>
+            <a href="/items/edit/{{ item.id }}" role="button" class="outline btn-sm">Add Stock</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<!-- Today's Recent Orders -->
+<section>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <h4 style="margin-bottom: 0;">📋 Today's Orders</h4>
+    <a href="/orders" role="button" class="outline btn-sm">View All Orders</a>
+  </div>
+
+  {% if recent_orders %}
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Order #</th>
+          <th>Customer</th>
+          <th>Items</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ord in recent_orders %}
+        <tr>
+          <td><strong>#{{ ord.order_id }}</strong></td>
+          <td><code>{{ ord.customer_id }}</code></td>
+          <td>
+            {% for it in ord.items %}
+            <div>{{ it.qty }} {{ it.unit }} {{ it.name }}</div>
+            {% endfor %}
+          </td>
+          <td><strong>₹{{ "%.2f"|format(ord.total) }}</strong></td>
+          <td>
+            <span class="badge badge-{{ ord.status }}">{{ ord.status }}</span>
+          </td>
+          <td>
+            <div class="action-btns">
+              {% if ord.status == "confirmed" %}
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="accepted">
+                <button type="submit" class="btn-sm btn-success">Accept</button>
+              </form>
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="rejected">
+                <button type="submit" class="btn-sm btn-danger">Reject</button>
+              </form>
+              {% elif ord.status == "accepted" %}
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="delivered">
+                <button type="submit" class="btn-sm btn-success">Delivered</button>
+              </form>
+              {% else %}
+              <span style="font-size: 0.85rem; color: var(--pico-muted-color);">—</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color: var(--pico-muted-color);">No orders placed yet today.</p>
+  {% endif %}
+</section>
+{% endblock %}
