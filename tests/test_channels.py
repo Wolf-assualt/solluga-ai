@@ -226,3 +226,53 @@ def test_transcription_parser_unsure_clarification_prompt():
     assert result.is_confident is False
     assert result.clarification_prompt is not None
     assert "rendu kilo ..." in result.clarification_prompt
+
+
+# ---------------------------------------------------------------------------
+# Voice transcription transport (regression: Telegram sends ogg/opus)
+# ---------------------------------------------------------------------------
+
+from core import transcription as _tr
+
+
+def _fake_native_response(payload: dict) -> MagicMock:
+    """Build a fake httpx response carrying a native generateContent payload."""
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(payload)}]}}]
+    }
+    return resp
+
+
+def test_transcribe_ogg_uses_native_inline_data():
+    """Telegram's ogg/opus must go through Gemini's native inline_data path."""
+    ogg = b"OggS" + b"\x00" * 128
+    payload = {
+        "transcript": "2 kg arisi kudunga",
+        "is_confident": True,
+        "language": "tanglish",
+        "clarification_needed": False,
+    }
+    with patch("core.transcription.httpx.post", return_value=_fake_native_response(payload)) as mock_post:
+        result = _tr.transcribe_audio_bytes(ogg, mime_type="audio/ogg")
+
+    assert result.text == "2 kg arisi kudunga"
+    assert result.is_confident is True
+    assert mock_post.called
+
+    # The request must carry inline_data with an ogg mime type (not input_audio).
+    sent = mock_post.call_args.kwargs["json"]
+    inline = sent["contents"][0]["parts"][1]["inline_data"]
+    assert inline["mime_type"] == "audio/ogg"
+    assert inline["data"]
+
+
+def test_transcribe_ogg_falls_back_to_failure_prompt_on_error():
+    """If native + compat both fail for ogg, we surface the friendly fallback."""
+    ogg = b"OggS" + b"\x00" * 128
+    with patch("core.transcription.httpx.post", side_effect=RuntimeError("boom")):
+        result = _tr.transcribe_audio_bytes(ogg, mime_type="audio/ogg")
+
+    assert result.text == ""
+    assert "processing failed" in (result.clarification_prompt or "").lower()
