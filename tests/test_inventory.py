@@ -6,17 +6,23 @@ import json
 import sqlite3
 import tempfile
 import pytest
+from datetime import date
 from unittest.mock import patch
 
 from core.inventory import (
     StockRow,
     add_new_item,
     add_stock,
+    clear_sales_history,
     get_low_stock_items,
     get_order_detail,
+    get_sales_for_date,
+    get_sales_reset_at,
+    get_sales_summary,
     get_stock_list,
     get_todays_orders,
     get_todays_sales_total,
+    reset_sales,
     set_price,
     update_order_status,
 )
@@ -214,3 +220,145 @@ class TestOrderManagement:
         # Sales should only count confirmed, accepted, delivered (150 + 250 = 400), not rejected
         sales = get_todays_sales_total()
         assert sales == pytest.approx(400.0)
+
+
+class TestSalesReporting:
+    def _insert_order(self, db, total, status="confirmed", created_at=None):
+        con = sqlite3.connect(db)
+        if created_at:
+            con.execute(
+                "INSERT INTO orders (customer_id, status, total, created_at) VALUES ('1', ?, ?, ?)",
+                (status, total, created_at),
+            )
+        else:
+            con.execute(
+                "INSERT INTO orders (customer_id, status, total) VALUES ('1', ?, ?)",
+                (status, total),
+            )
+        con.commit()
+        con.close()
+
+    def test_summary_counts_only_sold_statuses(self, temp_db):
+        self._insert_order(temp_db, 150.0, "confirmed")
+        self._insert_order(temp_db, 250.0, "delivered")
+        self._insert_order(temp_db, 999.0, "rejected")
+        self._insert_order(temp_db, 42.0, "pending")
+
+        s = get_sales_summary()
+        assert s["today"] == pytest.approx(400.0)
+        assert s["week"] == pytest.approx(400.0)
+        assert s["month"] == pytest.approx(400.0)
+        assert s["total_all_time"] == pytest.approx(400.0)
+        assert s["total_since_reset"] == pytest.approx(400.0)
+        assert s["reset_at"] is None
+
+    def test_reset_zeroes_all_summary_but_keeps_history(self, temp_db):
+        self._insert_order(temp_db, 200.0, "confirmed")
+        before = get_sales_summary()
+        assert before["total_since_reset"] == pytest.approx(200.0)
+        assert before["today"] == pytest.approx(200.0)
+
+        ts = reset_sales()
+        assert ts
+
+        after = get_sales_summary()
+        # Every summary window is zeroed...
+        assert after["today"] == pytest.approx(0.0)
+        assert after["week"] == pytest.approx(0.0)
+        assert after["month"] == pytest.approx(0.0)
+        assert after["total_since_reset"] == pytest.approx(0.0)
+        # ...but history is never lost.
+        assert after["total_all_time"] == pytest.approx(200.0)
+        assert after["reset_at"] == ts
+        assert get_sales_reset_at() == ts
+        # The home-page "Today's Sales" figure respects the reset too.
+        assert get_todays_sales_total() == pytest.approx(0.0)
+
+    def test_new_sales_after_reset_count_again(self, temp_db):
+        from core.db import set_setting
+        from core.inventory import SALES_RESET_KEY
+
+        # Deterministic baseline at a fixed moment today.
+        today = date.today().isoformat()
+        set_setting(SALES_RESET_KEY, f"{today} 00:00:01")
+
+        # Before baseline -> excluded.
+        self._insert_order(temp_db, 100.0, "confirmed", f"{today} 00:00:00")
+        # After baseline -> counted.
+        self._insert_order(temp_db, 60.0, "confirmed", f"{today} 12:00:00")
+
+        after = get_sales_summary()
+        assert after["today"] == pytest.approx(60.0)
+        assert after["week"] == pytest.approx(60.0)
+        assert after["month"] == pytest.approx(60.0)
+        assert after["total_since_reset"] == pytest.approx(60.0)
+        assert after["total_all_time"] == pytest.approx(160.0)
+
+    def test_orders_before_reset_are_excluded(self, temp_db):
+        self._insert_order(temp_db, 500.0, "confirmed", "2020-01-01 09:00:00")
+        reset_sales()
+        s = get_sales_summary()
+        assert s["today"] == pytest.approx(0.0)
+        assert s["total_since_reset"] == pytest.approx(0.0)
+        assert s["total_all_time"] == pytest.approx(500.0)
+
+    def test_sales_for_date_with_items(self, temp_db):
+        con = sqlite3.connect(temp_db)
+        con.execute(
+            "INSERT INTO orders (customer_id, status, total, created_at) "
+            "VALUES ('1', 'confirmed', 110.0, '2026-02-10 12:00:00')"
+        )
+        order_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+        con.execute(
+            "INSERT INTO order_items (order_id, item_id, quantity, unit_price) VALUES (?, 1, 2.0, 55.0)",
+            (order_id,),
+        )
+        con.commit()
+        con.close()
+
+        report = get_sales_for_date("2026-02-10")
+        assert report["date"] == "2026-02-10"
+        assert report["total"] == pytest.approx(110.0)
+        assert report["order_count"] == 1
+        assert len(report["items"]) == 1
+        assert report["items"][0]["name"] == "rice"
+        assert report["items"][0]["qty"] == pytest.approx(2.0)
+        assert report["items"][0]["amount"] == pytest.approx(110.0)
+
+    def test_sales_for_date_empty(self, temp_db):
+        report = get_sales_for_date("1999-01-01")
+        assert report["total"] == 0.0
+        assert report["order_count"] == 0
+        assert report["items"] == []
+
+    def test_clear_sales_history_keeps_items(self, temp_db):
+        # Two orders, one with a line item.
+        con = sqlite3.connect(temp_db)
+        con.execute("INSERT INTO orders (customer_id, status, total) VALUES ('1', 'confirmed', 100.0)")
+        oid = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+        con.execute(
+            "INSERT INTO order_items (order_id, item_id, quantity, unit_price) VALUES (?, 1, 2.0, 50.0)",
+            (oid,),
+        )
+        con.commit()
+        con.close()
+        self._insert_order(temp_db, 50.0, "delivered")
+        reset_sales()
+        assert get_sales_reset_at() is not None
+
+        result = clear_sales_history()
+
+        assert result["orders_deleted"] == 2
+        assert result["order_items_deleted"] == 1
+        # Baseline cleared -> brand-new state.
+        assert get_sales_reset_at() is None
+        summary = get_sales_summary()
+        assert summary["today"] == 0.0
+        assert summary["total_all_time"] == 0.0
+        assert get_todays_orders() == []
+        # Catalog is untouched.
+        assert len(get_stock_list()) == 3
+
+        # Order numbering restarts at 1.
+        self._insert_order(temp_db, 20.0, "confirmed")
+        assert get_todays_orders()[0].order_id == 1

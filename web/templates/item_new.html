@@ -1,12 +1,20 @@
 {% extends "base.html" %}
 
 {% block title %}Add New Item — Sollunga{% endblock %}
+{% block page_title %}Add New Item{% endblock %}
+{% block page_subtitle %}Create a new product in your inventory{% endblock %}
+
+{% block page_actions %}
+<a href="/items" role="button" class="outline btn-sm btn-ghost"><i class="fa-solid fa-arrow-left"></i> Back</a>
+{% endblock %}
 
 {% block content %}
-<article style="max-width: 580px; margin: 1rem auto; padding: 2rem;">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-    <h3 style="margin-bottom: 0;">➕ Add New Item</h3>
-    <a href="/items" role="button" class="outline btn-sm">Back</a>
+<div class="card" style="max-width: 680px;">
+  <div class="card-head" style="padding: 0 0 1.1rem; border-bottom: 1px solid var(--line); margin-bottom: 1.35rem;">
+    <h3 class="section-title" style="margin:0;">
+      <span class="card-title-ico ico-indigo"><i class="fa-solid fa-plus"></i></span>
+      Item Details
+    </h3>
   </div>
 
   <form method="POST" action="/items/new">
@@ -15,7 +23,7 @@
       <input type="text" id="name" name="name" placeholder="e.g. tea powder" required>
     </label>
 
-    <div class="grid">
+    <div class="form-grid">
       <label for="unit">
         Unit
         <input type="text" id="unit" name="unit" placeholder="e.g. kg, litre, packet, piece" required>
@@ -34,10 +42,13 @@
     <label for="aliases">
       Aliases / Keywords (comma-separated Tamil, Tanglish, synonyms)
       <input type="text" id="aliases" name="aliases" placeholder="e.g. tea, chaya, theila, tea packet">
-      <small style="color: var(--pico-muted-color);">Used by the AI matcher when customers order.</small>
+      <small class="field-help">Used by the AI matcher when customers order.</small>
     </label>
 
-    <button type="submit" style="margin-top: 1rem; width: 100%;">Create Item</button>
+    <div class="form-actions">
+      <button type="submit"><i class="fa-solid fa-floppy-disk"></i> Create Item</button>
+      <a href="/items" role="button" class="outline btn-ghost">Cancel</a>
+    </div>
   </form>
-</article>
+</div>
 {% endblock %}

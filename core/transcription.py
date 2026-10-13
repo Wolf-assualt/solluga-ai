@@ -1,9 +1,12 @@
 """
 core/transcription.py — Voice note speech-to-text converter.
 
-Uses Gemini API multimodal audio input (free tier via Google AI Studio)
-to transcribe voice notes in Tamil, English, and Tanglish.
-Includes confidence detection and fallback verification prompt logic.
+Transcribes voice notes (Tamil / English / Tanglish) using Gemini's OpenAI
+compatible chat-completions endpoint with multimodal audio input.
+
+Uses the official `input_audio` content part (not image_url), an explicit
+HTTP timeout (the previous default of 10 minutes caused voice notes to hang),
+and only models verified to work on the project's free-tier API key.
 """
 
 from __future__ import annotations
@@ -24,7 +27,30 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
 _API_KEY = os.getenv("LLM_API_KEY", "")
-_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+# Default to a model verified to work on this key's free tier.
+_MODEL = os.getenv("LLM_MODEL", "gemini-3.1-flash-lite")
+_REQUEST_TIMEOUT = float(os.getenv("LLM_TIMEOUT_SECONDS", "25.0"))
+
+# Order matters: first is the primary, second is the only fallback.
+_TRANSCRIPTION_MODELS = [
+    _MODEL,
+    "gemini-3.1-flash-lite-preview",
+]
+
+# Map Telegram / WhatsApp audio mime types to Gemini's input_audio format names.
+_MIME_TO_FORMAT = {
+    "audio/ogg": "ogg",
+    "audio/opus": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/m4a": "m4a",
+    "audio/mp4": "mp4",
+    "audio/aac": "aac",
+    "audio/flac": "flac",
+    "audio/x-flac": "flac",
+}
 
 
 @dataclass
@@ -53,9 +79,15 @@ Guidelines:
 """
 
 
+def _pick_format(mime_type: str) -> str:
+    """Return a Gemini input_audio format for the given mime type."""
+    clean = (mime_type or "").split(";")[0].strip().lower()
+    return _MIME_TO_FORMAT.get(clean, "ogg")
+
+
 def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str = "audio/ogg") -> TranscriptionResult:
     """
-    Transcribe raw audio bytes using Gemini API input.
+    Transcribe raw audio bytes using Gemini's OpenAI-compatible audio input.
     Supports audio/ogg, audio/mpeg, audio/wav, audio/m4a, audio/mp4, etc.
     """
     if not audio_bytes:
@@ -66,35 +98,38 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str = "audio/ogg") -> 
             clarification_prompt="Empty audio recording.",
         )
 
-    # Clean mime type
-    clean_mime = mime_type.split(";")[0].strip() or "audio/ogg"
-
-    # Normalize audio/ogg codecs if present
     b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-    data_uri = f"data:{clean_mime};base64,{b64_audio}"
+    audio_format = _pick_format(mime_type)
 
-    client = OpenAI(api_key=_API_KEY, base_url=_BASE_URL)
-    models_to_try = [_MODEL, "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash"]
+    client = OpenAI(api_key=_API_KEY, base_url=_BASE_URL, timeout=_REQUEST_TIMEOUT)
 
-    for model_name in models_to_try:
+    for model_name in _TRANSCRIPTION_MODELS:
         try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
+            kwargs: dict = {
+                "model": model_name,
+                "messages": [
                     {
                         "role": "user",
                         "content": [
                             {"type": "text", "text": _AUDIO_TRANSCRIPTION_PROMPT},
                             {
-                                "type": "image_url",
-                                "image_url": {"url": data_uri},
+                                "type": "input_audio",
+                                "input_audio": {
+                                    "data": b64_audio,
+                                    "format": audio_format,
+                                },
                             },
                         ],
                     }
                 ],
-                temperature=0,
-                max_tokens=512,
-            )
+                "temperature": 0,
+                "max_tokens": 512,
+            }
+            # Cut thinking time on Gemini 3.x when talking to Google's endpoint.
+            if "generativelanguage.googleapis.com" in _BASE_URL and model_name.startswith("gemini-3"):
+                kwargs["reasoning_effort"] = "low"
+
+            response = client.chat.completions.create(**kwargs)
             raw_text = response.choices[0].message.content or ""
             if raw_text:
                 return _parse_transcription_response(raw_text)

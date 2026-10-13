@@ -70,7 +70,8 @@ Solluga AI/
 │       ├── items.html
 │       ├── item_new.html
 │       ├── item_edit.html
-│       └── orders.html
+│       ├── orders.html
+│       └── sales.html
 │
 ├── data/
 │   ├── schema.sql             # Table definitions
@@ -105,7 +106,7 @@ Solluga AI/
 Configured via `.env`:
 - `LLM_BASE_URL` — OpenAI-compatible endpoint (default: Gemini free tier)
 - `LLM_API_KEY` — API key
-- `LLM_MODEL` — Model name (default: `gemini-2.5-flash-lite`)
+- `LLM_MODEL` — Model name (default: `gemini-3.1-flash-lite`, verified fast on the free tier)
 - `LLM_FALLBACK_BASE_URL` — Secondary fallback endpoint
 - `LLM_FALLBACK_API_KEY` — Secondary fallback API key
 

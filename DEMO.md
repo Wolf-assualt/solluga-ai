@@ -114,7 +114,7 @@ Follow these exact 5 messages to demonstrate all core capabilities in under 2 mi
   * Tap `[Delivered]` → Customer receives instant update: *"Your order #1 has been marked as Delivered!"*
 * **Step B (Web Dashboard):**
   * Open `http://localhost:8000` in browser (or phone).
-  * Log in with password: `sollunga123` (from `.env`).
+  * Log in with password: `YuvaNavi123` (from `.env`).
   * Point out:
     1. **Today's Sales**: Live revenue total updated.
     2. **Low-Stock Alert**: Shows Oil (3 litres remaining).

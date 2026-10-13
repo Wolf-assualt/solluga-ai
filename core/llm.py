@@ -27,17 +27,20 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Primary LLM provider
+# NOTE: model chosen from verified-working free models for this API key.
+# gemini-3.5-flash-lite / gemini-3.8-flash hang or return 429 quota errors on
+# the free tier, so default to gemini-3.1-flash-lite which is fast & reliable.
 _BASE_URL = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
 _API_KEY = os.getenv("LLM_API_KEY", "")
-_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+_MODEL = os.getenv("LLM_MODEL", "gemini-3.1-flash-lite")
 
 # Fallback LLM provider (optional)
 _FALLBACK_BASE_URL = os.getenv("LLM_FALLBACK_BASE_URL", "").strip()
 _FALLBACK_API_KEY = os.getenv("LLM_FALLBACK_API_KEY", "").strip()
 _FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gemini-3.8-flash").strip()
 
-_REQUEST_TIMEOUT = float(os.getenv("LLM_TIMEOUT_SECONDS", "8.0"))
-_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
+_REQUEST_TIMEOUT = float(os.getenv("LLM_TIMEOUT_SECONDS", "25.0"))
+_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "1"))
 
 _SYSTEM_PROMPT = """You are a grocery order parser for a small Indian shop.
 
@@ -74,16 +77,12 @@ def _get_client() -> OpenAI:
 
 
 
-# Verified active free Gemini models pool
+# Verified working free Gemini models for this project's API key.
+# (gemini-3.5-flash-lite / 3.6 / 3.7 / 3.8 hang or hit free-tier quota,
+#  gemini-2.5-flash-lite returns 404, gemini-flash-*-latest time out.)
 _DEFAULT_FREE_MODELS = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
+    "gemini-3.1-flash-lite-preview",
 ]
 
 
@@ -94,7 +93,7 @@ def _get_primary_models() -> list[str]:
         custom = [m.strip() for m in raw.split(",") if m.strip()]
         if custom:
             return custom
-    primary = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite").strip()
+    primary = os.getenv("LLM_MODEL", "gemini-3.1-flash-lite").strip()
     result = [primary]
     for m in _DEFAULT_FREE_MODELS:
         if m not in result:
@@ -102,17 +101,27 @@ def _get_primary_models() -> list[str]:
     return result
 
 
+def _is_gemini_3x(model: str) -> bool:
+    """Gemini 3.x models accept reasoning_effort='low' to cut thinking time."""
+    return model.startswith("gemini-3") or model.startswith("models/gemini-3")
+
+
 def _call_provider(client: OpenAI, model: str, message: str) -> Optional[str]:
     """Execute chat completion with given client and model."""
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+    kwargs: dict = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": message},
         ],
-        temperature=0,
-        max_tokens=512,
-    )
+        "temperature": 0,
+        "max_tokens": 512,
+    }
+    # Only use Gemini-specific thinking control on Google's endpoint to avoid
+    # breaking third-party OpenAI-compatible fallback providers.
+    if "generativelanguage.googleapis.com" in _BASE_URL and _is_gemini_3x(model):
+        kwargs["reasoning_effort"] = "low"
+    response = client.chat.completions.create(**kwargs)
     if response and response.choices and len(response.choices) > 0:
         return response.choices[0].message.content or ""
     return None
@@ -159,7 +168,7 @@ def extract_order_items(message: str) -> list[dict]:
                     logger.info("[llm] Rate limit/quota hit on '%s', immediately trying next fallback model...", model_name)
                     break
                 if attempt < _MAX_RETRIES:
-                    time.sleep(0.3 * attempt)
+                    time.sleep(0.2 * attempt)
 
     # 2. Try Secondary Fallback Provider (e.g. secondary API key or backup provider)
     fallback_client = _get_fallback_client()

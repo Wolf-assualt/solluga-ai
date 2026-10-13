@@ -1,18 +1,16 @@
 {% extends "base.html" %}
 
 {% block title %}Orders — Sollunga{% endblock %}
+{% block page_title %}Orders{% endblock %}
+{% block page_subtitle %}Track, accept and update customer orders{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
-  <h3 style="margin-bottom: 0;">📋 Orders</h3>
-</div>
-
 <!-- Filters Bar -->
-<article style="padding: 1rem 1.25rem; margin-bottom: 1.5rem;">
+<div class="card">
   <form method="GET" action="/orders" style="margin-bottom: 0;">
-    <div class="grid" style="align-items: end;">
+    <div class="form-grid" style="align-items: end;">
       <label for="status">
-        Filter Status
+        <i class="fa-solid fa-filter" style="color:var(--brand-600);"></i> Filter Status
         <select id="status" name="status" onchange="this.form.submit()">
           <option value="all" {% if current_status == "all" %}selected{% endif %}>All Statuses</option>
           <option value="confirmed" {% if current_status == "confirmed" %}selected{% endif %}>Confirmed</option>
@@ -24,7 +22,7 @@
       </label>
 
       <label for="date">
-        Filter Date
+        <i class="fa-regular fa-calendar" style="color:var(--brand-600);"></i> Filter Date
         <select id="date" name="date" onchange="this.form.submit()">
           <option value="all" {% if current_date == "all" %}selected{% endif %}>All Time</option>
           <option value="today" {% if current_date == "today" %}selected{% endif %}>Today Only</option>
@@ -32,82 +30,91 @@
       </label>
 
       <div>
-        <button type="submit" class="outline btn-sm" style="width: 100%;">Apply</button>
+        <button type="submit" class="btn-sm" style="width: 100%;">
+          <i class="fa-solid fa-magnifying-glass"></i> Apply Filters
+        </button>
       </div>
     </div>
   </form>
-</article>
+</div>
 
 <!-- Orders Table -->
-<div class="table-container">
-  <table>
-    <thead>
-      <tr>
-        <th>Order #</th>
-        <th>Date & Time</th>
-        <th>Customer</th>
-        <th>Items</th>
-        <th>Total</th>
-        <th>Status</th>
-        <th>Change Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for ord in orders %}
-      <tr>
-        <td><strong>#{{ ord.order_id }}</strong></td>
-        <td style="font-size: 0.85rem; color: var(--pico-muted-color);">{{ ord.created_at }}</td>
-        <td><code>{{ ord.customer_id }}</code></td>
-        <td>
-          {% for it in ord.items %}
-          <div>• {{ it.qty }} {{ it.unit }} {{ it.name }} (@ ₹{{ "%.2f"|format(it.unit_price) }})</div>
-          {% endfor %}
-        </td>
-        <td><strong>₹{{ "%.2f"|format(ord.total) }}</strong></td>
-        <td>
-          <span class="badge badge-{{ ord.status }}">{{ ord.status }}</span>
-        </td>
-        <td>
-          <div class="action-btns">
-            {% if ord.status == "confirmed" %}
-            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
-              <input type="hidden" name="status" value="accepted">
-              <button type="submit" class="btn-sm btn-success">Accept</button>
-            </form>
-            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
-              <input type="hidden" name="status" value="rejected">
-              <button type="submit" class="btn-sm btn-danger">Reject</button>
-            </form>
-            {% elif ord.status == "accepted" %}
-            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
-              <input type="hidden" name="status" value="delivered">
-              <button type="submit" class="btn-sm btn-success">Delivered</button>
-            </form>
-            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
-              <input type="hidden" name="status" value="rejected">
-              <button type="submit" class="btn-sm btn-danger">Reject</button>
-            </form>
-            {% elif ord.status == "delivered" %}
-            <span style="font-size: 0.85rem; color: var(--pico-muted-color);">Completed</span>
-            {% elif ord.status == "rejected" or ord.status == "cancelled" %}
-            <span style="font-size: 0.85rem; color: var(--pico-muted-color);">Closed</span>
-            {% else %}
-            <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
-              <input type="hidden" name="status" value="accepted">
-              <button type="submit" class="btn-sm">Accept</button>
-            </form>
-            {% endif %}
-          </div>
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="7" style="text-align: center; color: var(--pico-muted-color); padding: 2rem;">
-          No orders found matching the filter criteria.
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="card card-flush">
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Order #</th>
+          <th>Date &amp; Time</th>
+          <th>Customer</th>
+          <th>Items</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th>Change Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ord in orders %}
+        <tr>
+          <td><strong>#{{ ord.order_id }}</strong></td>
+          <td class="muted" style="font-size:.82rem; white-space:nowrap;">{{ ord.created_at }}</td>
+          <td><code class="mono">{{ ord.customer_id }}</code></td>
+          <td>
+            <div class="stack">
+              {% for it in ord.items %}
+              <span><i class="fa-solid fa-circle" style="font-size:.4rem; color:var(--muted); opacity:.6; vertical-align:middle; margin-right:.35rem;"></i>{{ it.qty }} {{ it.unit }} {{ it.name }} <span class="muted">(@ ₹{{ "%.2f"|format(it.unit_price) }})</span></span>
+              {% endfor %}
+            </div>
+          </td>
+          <td><strong>₹{{ "%.2f"|format(ord.total) }}</strong></td>
+          <td>
+            <span class="badge badge-{{ ord.status }}">{{ ord.status }}</span>
+          </td>
+          <td>
+            <div class="action-btns">
+              {% if ord.status == "confirmed" %}
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="accepted">
+                <button type="submit" class="btn-sm btn-success"><i class="fa-solid fa-check"></i> Accept</button>
+              </form>
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="rejected">
+                <button type="submit" class="btn-sm btn-danger"><i class="fa-solid fa-xmark"></i> Reject</button>
+              </form>
+              {% elif ord.status == "accepted" %}
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="delivered">
+                <button type="submit" class="btn-sm btn-success"><i class="fa-solid fa-truck-fast"></i> Delivered</button>
+              </form>
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="rejected">
+                <button type="submit" class="btn-sm btn-danger"><i class="fa-solid fa-xmark"></i> Reject</button>
+              </form>
+              {% elif ord.status == "delivered" %}
+              <span class="muted" style="font-size:.85rem;"><i class="fa-solid fa-circle-check" style="color:var(--ico-green-fg);"></i> Completed</span>
+              {% elif ord.status == "rejected" or ord.status == "cancelled" %}
+              <span class="muted" style="font-size:.85rem;"><i class="fa-solid fa-lock"></i> Closed</span>
+              {% else %}
+              <form method="POST" action="/orders/{{ ord.order_id }}/status" style="display:inline; margin:0;">
+                <input type="hidden" name="status" value="accepted">
+                <button type="submit" class="btn-sm btn-success"><i class="fa-solid fa-check"></i> Accept</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7">
+            <div class="empty-state">
+              <i class="fa-regular fa-folder-open"></i>
+              No orders found matching the filter criteria.
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

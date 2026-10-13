@@ -7,6 +7,7 @@ Called by both Telegram handlers and WhatsApp webhooks.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -107,7 +108,10 @@ async def handle_customer_text(
 
     # Process draft with active shop
     try:
-        draft = process_message(cleaned, shop_id=active_shop_id)
+        # LLM extraction is blocking — run it off the event loop.
+        draft = await asyncio.to_thread(
+            process_message, cleaned, shop_id=active_shop_id
+        )
     except Exception as exc:
         logger.exception("Error processing customer message: %s", exc)
         await channel.send_text(
@@ -166,7 +170,9 @@ async def handle_order_confirmation(
     active_shop_id = get_customer_shop_id(customer_id)
 
     try:
-        order_id = confirm_order(customer_id, draft, shop_id=active_shop_id)
+        order_id = await asyncio.to_thread(
+            confirm_order, customer_id, draft, shop_id=active_shop_id
+        )
     except ValueError as exc:
         logger.error("confirm_order failed for %s: %s", customer_id, exc)
         clear_user_draft(channel.channel_name, customer_id)

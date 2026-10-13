@@ -43,3 +43,12 @@ CREATE TABLE IF NOT EXISTS customer_shops (
     updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Simple key-value store for dashboard/owner settings.
+-- e.g. key='sales_reset_at' holds the baseline for the resettable
+-- "total sold" counter (orders before this moment are excluded).
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+

@@ -19,8 +19,8 @@ _serializer = URLSafeTimedSerializer(_SECRET_KEY)
 
 
 def get_dashboard_password() -> str:
-    """Return dashboard password from environment (default: sollunga123)."""
-    return os.getenv("DASHBOARD_PASSWORD", "sollunga123").strip()
+    """Return dashboard password from environment (default: YuvaNavi123)."""
+    return os.getenv("DASHBOARD_PASSWORD", "YuvaNavi123").strip()
 
 
 def create_session_token(username: str = "owner") -> str:

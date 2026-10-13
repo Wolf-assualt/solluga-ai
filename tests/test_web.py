@@ -189,3 +189,93 @@ class TestOrdersManagement:
         )
         assert resp_status.status_code == 200
         assert "accepted" in resp_status.text
+
+
+class TestSalesReports:
+    def _insert_order(self, db, total, status="confirmed", created_at=None):
+        con = sqlite3.connect(db)
+        if created_at:
+            con.execute(
+                "INSERT INTO orders (customer_id, status, total, created_at) VALUES ('1', ?, ?, ?)",
+                (status, total, created_at),
+            )
+        else:
+            con.execute(
+                "INSERT INTO orders (customer_id, status, total) VALUES ('1', ?, ?)",
+                (status, total),
+            )
+        con.commit()
+        con.close()
+
+    def test_sales_page_requires_auth(self, client):
+        response = client.get("/sales", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+    def test_sales_page_renders(self, auth_client):
+        response = auth_client.get("/sales")
+        assert response.status_code == 200
+        assert "Total Sold" in response.text
+        assert "This Week" in response.text
+        assert "This Month" in response.text
+        assert "Single-Day Report" in response.text
+
+    def test_reset_button_zeroes_total(self, auth_client, temp_db):
+        self._insert_order(temp_db, 200.0, "confirmed")
+
+        before = auth_client.get("/sales")
+        assert "200.00" in before.text
+
+        reset = auth_client.post("/sales/reset", follow_redirects=False)
+        assert reset.status_code == 303
+        assert reset.headers["location"] == "/sales?reset=1"
+
+        after = auth_client.get("/sales?reset=1")
+        assert "Sales reset to" in after.text
+        assert "200.00" in after.text  # all-time history is still shown
+
+        # Every summary figure (incl. today/week/month) is zeroed.
+        from core.inventory import get_sales_summary
+        s = get_sales_summary()
+        assert s["today"] == 0.0
+        assert s["week"] == 0.0
+        assert s["month"] == 0.0
+        assert s["total_since_reset"] == 0.0
+        assert s["total_all_time"] == 200.0
+
+    def test_single_day_lookup(self, auth_client, temp_db):
+        self._insert_order(temp_db, 120.0, "confirmed", "2026-01-15 10:00:00")
+        self._insert_order(temp_db, 80.0, "confirmed", "2026-01-16 10:00:00")
+
+        response = auth_client.get("/sales?day=2026-01-15")
+        assert response.status_code == 200
+        assert "2026-01-15" in response.text
+        assert "120.00" in response.text
+
+    def test_invalid_day_shows_error(self, auth_client):
+        response = auth_client.get("/sales?day=not-a-date")
+        assert response.status_code == 200
+        assert "not a valid date" in response.text
+
+    def test_clear_history_requires_auth(self, client):
+        response = client.post("/sales/clear-history", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+    def test_clear_history_wipes_orders_and_keeps_items(self, auth_client, temp_db):
+        self._insert_order(temp_db, 100.0, "confirmed")
+        self._insert_order(temp_db, 250.0, "delivered")
+
+        response = auth_client.post("/sales/clear-history", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/sales?cleared=1"
+
+        page = auth_client.get("/sales?cleared=1")
+        assert "All sales history cleared" in page.text
+
+        con = sqlite3.connect(temp_db)
+        assert con.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0
+        assert con.execute("SELECT COUNT(*) FROM order_items").fetchone()[0] == 0
+        # Items catalog survives.
+        assert con.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
+        con.close()

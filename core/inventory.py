@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -282,32 +284,229 @@ def get_todays_orders(shop_id: Optional[int] = None) -> list[OrderSummary]:
 
 
 def get_todays_sales_total(shop_id: Optional[int] = None) -> float:
-    """Return the sum of totals for all *confirmed/accepted/delivered* orders today."""
+    """
+    Return today's sales total for confirmed/accepted/delivered orders.
+
+    Respects the resettable sales baseline: if the owner reset the counter
+    today, only orders placed *after* that moment are counted.
+    """
+    from core.db import get_conn
+
+    today_s = date.today().isoformat()
+    reset_at = get_sales_reset_at()
+    with get_conn() as con:
+        return _sum_sales(
+            con,
+            start_date=today_s,
+            end_date=today_s,
+            since_ts=reset_at,
+            shop_id=shop_id,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sales reporting: totals, windows, single day, and a resettable counter
+# ---------------------------------------------------------------------------
+
+#: Sales statuses counted as "sold" everywhere in this module.
+_SOLD_STATUSES = ("confirmed", "accepted", "delivered")
+
+#: settings key holding the "total sold" reset baseline timestamp.
+SALES_RESET_KEY = "sales_reset_at"
+
+
+def get_sales_reset_at() -> Optional[str]:
+    """Return the timestamp the shop owner last reset the total-sold counter."""
+    from core.db import get_setting
+
+    return get_setting(SALES_RESET_KEY)
+
+
+def reset_sales() -> str:
+    """
+    Zero every sales figure on the dashboard (total, today, week, month)
+    *without deleting any orders*.
+
+    Works by recording the current time as a baseline: only orders placed
+    after this moment count toward sales again. Returns the new baseline
+    timestamp (``YYYY-MM-DD HH:MM:SS``).
+    """
+    from core.db import get_conn, set_setting
+
+    # Use the database clock so the baseline shares the exact same time
+    # source as orders.created_at.
+    with get_conn() as con:
+        now = con.execute("SELECT datetime('now', 'localtime') AS t").fetchone()["t"]
+    set_setting(SALES_RESET_KEY, now)
+    return now
+
+
+def _orders_have_shop_col(con) -> bool:
+    return any(c["name"] == "shop_id" for c in con.execute("PRAGMA table_info(orders)").fetchall())
+
+
+def clear_sales_history(shop_id: Optional[int] = None) -> dict:
+    """
+    Permanently delete every order and order line (the whole sales history)
+    and clear the reset baseline, leaving items, prices and stock untouched.
+
+    This is destructive and cannot be undone. Returns a summary dict with
+    ``orders_deleted`` and ``order_items_deleted``.
+
+    Pass ``shop_id`` to clear a single shop only; ``None`` clears everything.
+    """
+    from core.db import delete_setting, get_conn
+
+    with get_conn() as con:
+        has_shop_col = _orders_have_shop_col(con)
+
+        if shop_id is not None and has_shop_col:
+            item_cur = con.execute(
+                "DELETE FROM order_items WHERE order_id IN "
+                "(SELECT id FROM orders WHERE shop_id = ?)",
+                (shop_id,),
+            )
+            order_cur = con.execute("DELETE FROM orders WHERE shop_id = ?", (shop_id,))
+        else:
+            item_cur = con.execute("DELETE FROM order_items")
+            order_cur = con.execute("DELETE FROM orders")
+            # Restart order numbering at #1 so the dashboard looks brand new.
+            try:
+                con.execute("DELETE FROM sqlite_sequence WHERE name IN ('orders', 'order_items')")
+            except sqlite3.OperationalError:
+                pass
+
+        orders_deleted = order_cur.rowcount if order_cur.rowcount is not None else 0
+        items_deleted = item_cur.rowcount if item_cur.rowcount is not None else 0
+
+    delete_setting(SALES_RESET_KEY)
+    return {"orders_deleted": orders_deleted, "order_items_deleted": items_deleted}
+
+
+def _sum_sales(
+    con,
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    since_ts: Optional[str] = None,
+    shop_id: Optional[int] = None,
+) -> float:
+    """Sum order totals for sold orders matching the given filters."""
+    where = ["status IN ({})".format(", ".join("?" * len(_SOLD_STATUSES)))]
+    params: list = list(_SOLD_STATUSES)
+    if start_date:
+        where.append("date(created_at) >= date(?)")
+        params.append(start_date)
+    if end_date:
+        where.append("date(created_at) <= date(?)")
+        params.append(end_date)
+    if since_ts:
+        where.append("created_at > ?")
+        params.append(since_ts)
+    if shop_id is not None and _orders_have_shop_col(con):
+        where.append("shop_id = ?")
+        params.append(shop_id)
+    sql = "SELECT COALESCE(SUM(total), 0) AS s FROM orders WHERE " + " AND ".join(where)
+    return float(con.execute(sql, params).fetchone()["s"])
+
+
+def get_sales_summary(shop_id: Optional[int] = None) -> dict:
+    """
+    Return sales figures for the dashboard.
+
+    Every figure respects the resettable baseline: once the owner hits
+    "Reset", each window counts only orders placed *after* the reset moment.
+
+    Keys:
+        ``today``             – sales placed today (since reset, if reset today)
+        ``week``              – sales since Monday of the current week
+        ``month``             – sales since the 1st of the current month
+        ``total_since_reset`` – sales since the last reset (the resettable total)
+        ``total_all_time``    – every sold order ever recorded (never reset)
+        ``reset_at``          – baseline timestamp, or ``None`` if never reset
+    """
+    from core.db import get_conn
+
+    today = date.today()
+    today_s = today.isoformat()
+    week_start_s = (today - timedelta(days=today.weekday())).isoformat()
+    month_start_s = today.replace(day=1).isoformat()
+    reset_at = get_sales_reset_at()
+
+    with get_conn() as con:
+        return {
+            "today": _sum_sales(
+                con, start_date=today_s, end_date=today_s, since_ts=reset_at, shop_id=shop_id
+            ),
+            "week": _sum_sales(con, start_date=week_start_s, end_date=today_s, since_ts=reset_at, shop_id=shop_id),
+            "month": _sum_sales(con, start_date=month_start_s, end_date=today_s, since_ts=reset_at, shop_id=shop_id),
+            "total_since_reset": _sum_sales(con, since_ts=reset_at, shop_id=shop_id),
+            "total_all_time": _sum_sales(con, shop_id=shop_id),
+            "reset_at": reset_at,
+        }
+
+
+def get_sales_for_date(day: str, shop_id: Optional[int] = None) -> dict:
+    """
+    Detailed sales for a single day (``YYYY-MM-DD``).
+
+    Returns ``total``, ``order_count`` and a per-item ``items`` breakdown.
+    """
     from core.db import get_conn
 
     with get_conn() as con:
-        has_shop_col = any(col["name"] == "shop_id" for col in con.execute("PRAGMA table_info(orders)").fetchall())
-        if has_shop_col and shop_id is not None:
-            row = con.execute(
-                """
-                SELECT COALESCE(SUM(total), 0) AS daily_total
-                FROM orders
-                WHERE date(created_at) = date('now', 'localtime')
-                  AND status IN ('confirmed', 'accepted', 'delivered')
-                  AND shop_id = ?
+        if shop_id is not None and _orders_have_shop_col(con):
+            tb = con.execute(
+                f"SELECT COALESCE(SUM(total), 0) AS s, COUNT(*) AS n FROM orders "
+                f"WHERE date(created_at) = date(?) AND status IN ({', '.join('?' * len(_SOLD_STATUSES))}) "
+                f"AND shop_id = ?",
+                [day, *_SOLD_STATUSES, shop_id],
+            ).fetchone()
+            item_rows = con.execute(
+                f"""
+                SELECT i.name, i.unit, SUM(oi.quantity) AS qty,
+                       SUM(oi.quantity * oi.unit_price) AS amount
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN items i ON i.id = oi.item_id
+                WHERE date(o.created_at) = date(?)
+                  AND o.status IN ({', '.join('?' * len(_SOLD_STATUSES))})
+                  AND o.shop_id = ?
+                GROUP BY i.id
+                ORDER BY amount DESC
                 """,
-                (shop_id,),
-            ).fetchone()
+                [day, *_SOLD_STATUSES, shop_id],
+            ).fetchall()
         else:
-            row = con.execute(
-                """
-                SELECT COALESCE(SUM(total), 0) AS daily_total
-                FROM orders
-                WHERE date(created_at) = date('now', 'localtime')
-                  AND status IN ('confirmed', 'accepted', 'delivered')
-                """
+            tb = con.execute(
+                f"SELECT COALESCE(SUM(total), 0) AS s, COUNT(*) AS n FROM orders "
+                f"WHERE date(created_at) = date(?) AND status IN ({', '.join('?' * len(_SOLD_STATUSES))})",
+                [day, *_SOLD_STATUSES],
             ).fetchone()
-    return float(row["daily_total"])
+            item_rows = con.execute(
+                f"""
+                SELECT i.name, i.unit, SUM(oi.quantity) AS qty,
+                       SUM(oi.quantity * oi.unit_price) AS amount
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN items i ON i.id = oi.item_id
+                WHERE date(o.created_at) = date(?)
+                  AND o.status IN ({', '.join('?' * len(_SOLD_STATUSES))})
+                GROUP BY i.id
+                ORDER BY amount DESC
+                """,
+                [day, *_SOLD_STATUSES],
+            ).fetchall()
+
+    return {
+        "date": day,
+        "total": float(tb["s"]),
+        "order_count": int(tb["n"]),
+        "items": [
+            {"name": r["name"], "unit": r["unit"], "qty": float(r["qty"]), "amount": float(r["amount"])}
+            for r in item_rows
+        ],
+    }
 
 
 def get_order_detail(order_id: int) -> Optional[OrderSummary]:

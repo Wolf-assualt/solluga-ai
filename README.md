@@ -97,14 +97,14 @@ TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 # Gemini API Key (from Google AI Studio - free tier)
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 LLM_API_KEY=AIzaSy...
-LLM_MODEL=gemini-2.5-flash-lite
+LLM_MODEL=gemini-3.1-flash-lite
 
 # Owner Telegram User ID (get via @userinfobot)
 OWNER_TELEGRAM_ID=123456789
 LOW_STOCK_THRESHOLD=3
 
 # Dashboard Password
-DASHBOARD_PASSWORD=sollunga123
+DASHBOARD_PASSWORD=YuvaNavi123
 SECRET_KEY=super-secret-key-change-me
 ```
 
@@ -131,7 +131,7 @@ python bot/main.py
 uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Visit the Web Dashboard at: **`http://localhost:8000`** (Password: `sollunga123`)  
+Visit the Web Dashboard at: **`http://localhost:8000`** (Password: `YuvaNavi123`)  
 System health status: **`http://localhost:8000/health`**
 
 ---
@@ -194,6 +194,7 @@ Total: ₹260.00
 
 ### Mobile Web Dashboard (`http://localhost:8000`)
 - **Dashboard Home:** Today's Orders, Today's Sales Revenue (₹), Low-stock alerts badge.
+- **Sales & Reports:** A **Reset sales** button that zeroes Total, Today, This Week and This Month (orders and history are kept), a single-day report with a per-item breakdown, and a guarded **Clear all history** danger-zone button that permanently deletes every order to start a brand-new dashboard (items, prices and stock are kept).
 - **Items Catalog:** Real-time stock counts, price adjustments, and item creation.
 - **Orders Manager:** Filter by status (`pending`, `accepted`, `delivered`, `rejected`), with single-click fulfillment.
 
@@ -207,7 +208,7 @@ The test suite covers LLM entity extraction, fuzzy alias matching, inventory cal
 pytest -v
 ```
 
-All 93 tests run without external network calls using deterministic mocks and test fixtures.
+All 103 tests run without external network calls using deterministic mocks and test fixtures.
 
 ---
 

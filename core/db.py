@@ -127,6 +127,50 @@ def get_all_items(shop_id: Optional[int] = None) -> list[dict]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Settings (simple key-value store, e.g. sales reset baseline)
+# ---------------------------------------------------------------------------
+
+_SETTINGS_DDL = """
+    CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )
+"""
+
+
+def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    """Read a settings value by key. Creates the settings table if missing."""
+    with get_conn() as con:
+        con.execute(_SETTINGS_DDL)
+        row = con.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    """Write a settings value (insert or update). Creates the table if missing."""
+    with get_conn() as con:
+        con.execute(_SETTINGS_DDL)
+        con.execute(
+            """
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?, ?, datetime('now', 'localtime'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (key, value),
+        )
+
+
+def delete_setting(key: str) -> None:
+    """Remove a settings value by key. Creates the table if missing (no-op)."""
+    with get_conn() as con:
+        con.execute(_SETTINGS_DDL)
+        con.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+
 def get_item_by_id(item_id: int) -> Optional[dict]:
     with get_conn() as con:
         row = con.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()

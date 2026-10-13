@@ -1,55 +1,82 @@
 {% extends "base.html" %}
 
-{% block title %}Inventory Items — Sollunga{% endblock %}
+{% block title %}Inventory — Sollunga{% endblock %}
+{% block page_title %}Inventory{% endblock %}
+{% block page_subtitle %}Manage your items, prices and stock levels{% endblock %}
+
+{% block page_actions %}
+<a href="/items/new" role="button" class="btn-sm"><i class="fa-solid fa-plus"></i> Add New Item</a>
+{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
-  <h3 style="margin-bottom: 0;">📦 Inventory Items</h3>
-  <a href="/items/new" role="button" class="btn-sm">+ Add New Item</a>
-</div>
+<div class="card card-flush">
+  <div class="card-head">
+    <h3 class="section-title" style="margin:0;">
+      <span class="card-title-ico ico-indigo"><i class="fa-solid fa-boxes-stacked"></i></span>
+      All Items
+      <span class="badge badge-confirmed" style="margin-left:.4rem;">{{ items|length }}</span>
+    </h3>
+  </div>
 
-<div class="table-container">
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Item Name</th>
-        <th>Unit</th>
-        <th>Price (₹)</th>
-        <th>Stock</th>
-        <th>Aliases</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in items %}
-      <tr>
-        <td>{{ item.id }}</td>
-        <td>
-          <strong>{{ item.name|capitalize }}</strong>
-          {% if item.is_low %}
-          <span class="badge badge-low" style="margin-left: 0.3rem;">Low</span>
-          {% endif %}
-        </td>
-        <td>{{ item.unit }}</td>
-        <td>₹{{ "%.2f"|format(item.price) }}</td>
-        <td>
-          <strong>{{ item.stock }}</strong>
-        </td>
-        <td style="font-size: 0.85rem; color: var(--pico-muted-color);">
-          {{ item.aliases|join(", ") }}
-        </td>
-        <td>
-          <div class="action-btns">
-            <a href="/items/edit/{{ item.id }}" role="button" class="outline btn-sm">Edit</a>
-            <form method="POST" action="/items/delete/{{ item.id }}" onsubmit="return confirm('Are you sure you want to delete {{ item.name }}?');" style="display:inline; margin:0;">
-              <button type="submit" class="outline btn-sm btn-danger" style="color: #d32f2f; border-color: #d32f2f;">Delete</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% if items %}
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Item Name</th>
+          <th>Unit</th>
+          <th>Price (₹)</th>
+          <th>Stock</th>
+          <th>Aliases</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="mono">{{ item.id }}</td>
+          <td>
+            <strong>{{ item.name|capitalize }}</strong>
+            {% if item.is_low %}
+            <span class="badge badge-low" style="margin-left: .3rem;">
+              <i class="fa-solid fa-arrow-down"></i> Low
+            </span>
+            {% endif %}
+          </td>
+          <td>{{ item.unit }}</td>
+          <td>₹{{ "%.2f"|format(item.price) }}</td>
+          <td>
+            <strong>{{ item.stock }}</strong>
+          </td>
+          <td class="muted" style="font-size:.82rem;">
+            {{ item.aliases|join(", ") }}
+          </td>
+          <td>
+            <div class="action-btns">
+              <a href="/items/edit/{{ item.id }}" role="button" class="outline btn-sm btn-ghost">
+                <i class="fa-solid fa-pen"></i> Edit
+              </a>
+              <form method="POST" action="/items/delete/{{ item.id }}" onsubmit="return confirm('Are you sure you want to delete {{ item.name }}?');" style="display:inline; margin:0;">
+                <button type="submit" class="outline btn-sm btn-danger">
+                  <i class="fa-solid fa-trash"></i> Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fa-solid fa-box-open"></i>
+    No items in your catalog yet.
+    <div style="margin-top:1rem;">
+      <a href="/items/new" role="button" class="btn-sm"><i class="fa-solid fa-plus"></i> Add your first item</a>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

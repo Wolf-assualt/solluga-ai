@@ -40,10 +40,16 @@ WEB_PID=$!
 # Wait a second for web server to initialize
 sleep 1
 
-# Start Cloudflare Tunnel for public WhatsApp webhook
+# Optional: start Cloudflare Tunnel ONLY if WhatsApp is configured.
+# The bot runs fully on Telegram without this.
+WA_CONFIGURED=0
+if grep -qE '^WHATSAPP_PHONE_NUMBER_ID=.+' .env 2>/dev/null && grep -qE '^WHATSAPP_ACCESS_TOKEN=.+' .env 2>/dev/null; then
+    WA_CONFIGURED=1
+fi
+
 TUNNEL_URL=""
-if [ -f "bin/cloudflared" ]; then
-    echo "🌍 Starting public tunnel for WhatsApp webhook..."
+if [ "$WA_CONFIGURED" = "1" ] && [ -f "bin/cloudflared" ]; then
+    echo "🌍 WhatsApp configured — starting public tunnel for webhook..."
     ./bin/cloudflared tunnel --url http://localhost:8000 > /tmp/sollunga_tunnel.log 2>&1 &
     TUNNEL_PID=$!
     
@@ -55,6 +61,8 @@ if [ -f "bin/cloudflared" ]; then
         fi
         sleep 1
     done
+else
+    echo "ℹ️ WhatsApp not configured — running Telegram-only (no tunnel needed)."
 fi
 
 # Start Telegram Bot
@@ -69,7 +77,7 @@ if [ -n "$TUNNEL_URL" ]; then
     echo "   • Public Webhook URL:  ${TUNNEL_URL}/whatsapp/webhook"
     echo "     (Paste this in Meta Developer Console -> WhatsApp -> Configuration -> Webhook)"
 fi
-echo "   • Telegram Bot:        Active"
+echo "   • Telegram Bot:        Active (Primary — WhatsApp disabled)"
 echo "   (Press Ctrl+C to stop all services)"
 echo "----------------------------------------------------------"
 

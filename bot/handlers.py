@@ -2,6 +2,7 @@
 bot/handlers.py — Telegram message and callback query handlers.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -69,7 +70,11 @@ async def handle_order_message(
 
     try:
         active_shop_id = get_customer_shop_id(str(user.id))
-        draft: OrderDraft = process_message(text, shop_id=active_shop_id)
+        # Run the LLM extraction pipeline off the event loop so one slow model
+        # call doesn't freeze responses for every other user of the bot.
+        draft: OrderDraft = await asyncio.to_thread(
+            process_message, text, shop_id=active_shop_id
+        )
     except Exception as exc:
         logger.exception("process_message failed: %s", exc)
         await update.message.reply_text(
@@ -196,7 +201,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     logger.info("Voice note received from %s (%d)", user.first_name, user.id)
-    await update.message.chat.send_action("record_voice")
+    await update.message.chat.send_action("typing")
 
     try:
         from core.transcription import transcribe_audio_bytes
@@ -205,7 +210,10 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
         audio_bytes = await file_obj.download_as_bytearray()
         mime_type = voice.mime_type or "audio/ogg"
 
-        result = transcribe_audio_bytes(bytes(audio_bytes), mime_type=mime_type)
+        # Transcription is a blocking HTTP call — run it off the event loop.
+        result = await asyncio.to_thread(
+            transcribe_audio_bytes, bytes(audio_bytes), mime_type=mime_type
+        )
 
         if not result.text:
             await update.message.reply_text(

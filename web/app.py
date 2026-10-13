@@ -5,11 +5,14 @@ Reuses core/inventory.py business logic and database models directly.
 Never exposes Telegram API tokens or LLM credentials to the frontend.
 """
 
+import asyncio
 import logging
 import os
+from datetime import date, datetime, timedelta
 from typing import Optional
 from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 
@@ -17,13 +20,17 @@ logger = logging.getLogger(__name__)
 
 from core.inventory import (
     add_new_item,
+    clear_sales_history,
     delete_item,
     get_low_stock_items,
     get_order_detail,
     get_orders_list,
+    get_sales_for_date,
+    get_sales_summary,
     get_stock_list,
     get_todays_orders,
     get_todays_sales_total,
+    reset_sales,
     update_item,
     update_order_status,
 )
@@ -39,8 +46,27 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# Pick up template edits without restarting the server
+templates.env.auto_reload = True
 
 app = FastAPI(title="Sollunga Shop Owner Dashboard")
+
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# ---------------------------------------------------------------------------
+# Favicon
+# ---------------------------------------------------------------------------
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Serve the branded SVG icon for browsers requesting /favicon.ico."""
+    return FileResponse(
+        os.path.join(STATIC_DIR, "favicon.svg"),
+        media_type="image/svg+xml",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +339,66 @@ async def order_status_submit(
 
 
 # ---------------------------------------------------------------------------
+# Sales & Reports (resettable total, week/month/single-day views)
+# ---------------------------------------------------------------------------
+
+@app.get("/sales", response_class=HTMLResponse)
+async def sales_page(
+    request: Request,
+    day: str = "",
+    user: str = Depends(require_auth),
+):
+    summary = get_sales_summary()
+    day_report = None
+    day_error = None
+    if day:
+        try:
+            datetime.strptime(day, "%Y-%m-%d")
+        except ValueError:
+            day_error = f"'{day}' is not a valid date (use YYYY-MM-DD)."
+            day = ""
+        else:
+            day_report = get_sales_for_date(day)
+
+    reset_done = request.query_params.get("reset") == "1"
+    cleared = request.query_params.get("cleared") == "1"
+    success = None
+    if reset_done:
+        success = "Sales reset to ₹0.00 — Total, Today, This Week and This Month now count from zero. Past orders are kept."
+    elif cleared:
+        success = "All sales history cleared. Your dashboard is now fresh — items and stock were kept."
+
+    return templates.TemplateResponse(
+        request=request,
+        name="sales.html",
+        context={
+            "user": user,
+            "summary": summary,
+            "day": day,
+            "day_report": day_report,
+            "day_error": day_error,
+            "success": success,
+            "today_iso": date.today().isoformat(),
+            "yesterday_iso": (date.today() - timedelta(days=1)).isoformat(),
+        },
+    )
+
+
+@app.post("/sales/reset")
+async def sales_reset_submit(user: str = Depends(require_auth)):
+    """Zero the resettable 'total sold' counter (past orders are kept)."""
+    reset_sales()
+    return RedirectResponse(url="/sales?reset=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/sales/clear-history")
+async def sales_clear_history_submit(user: str = Depends(require_auth)):
+    """Permanently delete all sales history (orders). Items/stock are kept."""
+    clear_sales_history()
+    return RedirectResponse(url="/sales?cleared=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ---------------------------------------------------------------------------
 # WhatsApp Cloud API Webhook (Phase 4)
 # ---------------------------------------------------------------------------
 
@@ -344,6 +430,10 @@ async def whatsapp_webhook_receive(request: Request):
     """
     import logging
     logger = logging.getLogger(__name__)
+
+    # Telegram-only mode: if WhatsApp isn't configured, ignore webhook traffic.
+    if not os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip():
+        return {"status": "ignored", "reason": "whatsapp_disabled"}
 
     try:
         body = await request.json()
@@ -391,7 +481,9 @@ async def whatsapp_webhook_receive(request: Request):
                 media_data = await wa_channel.download_media(media_id)
                 if media_data:
                     raw_audio, mime_type = media_data
-                    transcription = transcribe_audio_bytes(raw_audio, mime_type=mime_type)
+                    transcription = await asyncio.to_thread(
+                        transcribe_audio_bytes, raw_audio, mime_type=mime_type
+                    )
 
                     if not transcription.text:
                         await wa_channel.send_text(

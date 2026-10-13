@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Sales &amp; Reports — Sollunga{% endblock %}
+{% block page_title %}Sales &amp; Reports{% endblock %}
+{% block page_subtitle %}Review your revenue and daily sales performance{% endblock %}
+
+{% block content %}
+<!-- Summary cards -->
+<div class="stat-grid">
+  <div class="stat-card accent-indigo">
+    <div class="stat-top">
+      <span class="stat-label">Total Sold{% if summary.reset_at %} (since reset){% endif %}</span>
+      <span class="stat-icon ico-indigo"><i class="fa-solid fa-sack-dollar"></i></span>
+    </div>
+    <div class="stat-num">₹{{ "%.2f"|format(summary.total_since_reset) }}</div>
+    <div class="stat-hint">
+      {% if summary.reset_at %}Reset on {{ summary.reset_at }}{% else %}Not reset yet{% endif %}
+    </div>
+  </div>
+
+  <div class="stat-card accent-green">
+    <div class="stat-top">
+      <span class="stat-label">Today</span>
+      <span class="stat-icon ico-green"><i class="fa-solid fa-calendar-day"></i></span>
+    </div>
+    <div class="stat-num">₹{{ "%.2f"|format(summary.today) }}</div>
+    <div class="stat-hint">{% if summary.reset_at %}Since reset{% else %}Sold today{% endif %}</div>
+  </div>
+
+  <div class="stat-card accent-amber">
+    <div class="stat-top">
+      <span class="stat-label">This Week</span>
+      <span class="stat-icon ico-amber"><i class="fa-solid fa-calendar-week"></i></span>
+    </div>
+    <div class="stat-num">₹{{ "%.2f"|format(summary.week) }}</div>
+    <div class="stat-hint">{% if summary.reset_at %}Since reset{% else %}Monday – today{% endif %}</div>
+  </div>
+
+  <div class="stat-card accent-indigo">
+    <div class="stat-top">
+      <span class="stat-label">This Month</span>
+      <span class="stat-icon ico-indigo"><i class="fa-solid fa-calendar-days"></i></span>
+    </div>
+    <div class="stat-num">₹{{ "%.2f"|format(summary.month) }}</div>
+    <div class="stat-hint">{% if summary.reset_at %}Since reset{% else %}Since the 1st{% endif %}</div>
+  </div>
+</div>
+
+<!-- Reset control -->
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div style="display:flex; gap:.9rem; align-items:flex-start;">
+      <span class="stat-icon ico-amber" style="flex:0 0 42px;"><i class="fa-solid fa-rotate-left"></i></span>
+      <div>
+        <strong>Reset sales to zero</strong>
+        <div class="muted" style="font-size: .88rem; margin-top: .25rem;">
+          Zeroes <strong>Total, Today, This Week and This Month</strong> from
+          now on — orders and history are kept. All-time sold recorded:
+          <strong>₹{{ "%.2f"|format(summary.total_all_time) }}</strong>.
+        </div>
+      </div>
+    </div>
+    <form method="POST" action="/sales/reset" style="margin: 0;"
+          onsubmit="return confirm('Reset Total, Today, This Week and This Month sales to ₹0.00?\n\nPast orders are kept and still appear in Reports.');">
+      <button type="submit" class="btn-danger btn-sm"><i class="fa-solid fa-rotate-left"></i> Reset to ₹0</button>
+    </form>
+  </div>
+</div>
+
+<!-- Single day report -->
+<section style="margin-bottom: 2rem;">
+  <h3 class="section-title"><i class="fa-regular fa-calendar-check"></i> Single-Day Report</h3>
+
+  <div class="card">
+    <form method="GET" action="/sales" style="margin-bottom: 0;">
+      <div class="form-grid" style="align-items: end;">
+        <label for="day">
+          Pick a date
+          <input type="date" id="day" name="day" value="{{ day }}" max="{{ today_iso }}">
+        </label>
+        <div style="display: flex; gap: 0.5rem; align-items: end;">
+          <button type="submit" style="margin-bottom: 0;"><i class="fa-solid fa-magnifying-glass"></i> Show Sales</button>
+        </div>
+      </div>
+    </form>
+    <div style="margin-top: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <a href="/sales?day={{ today_iso }}" role="button" class="outline btn-sm btn-ghost">Today</a>
+      <a href="/sales?day={{ yesterday_iso }}" role="button" class="outline btn-sm btn-ghost">Yesterday</a>
+    </div>
+  </div>
+
+  {% if day_error %}
+  <div class="flash flash-error">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <span>{{ day_error }}</span>
+  </div>
+  {% endif %}
+
+  {% if day_report %}
+  <div class="stat-grid">
+    <div class="stat-card accent-green">
+      <div class="stat-top">
+        <span class="stat-label">Sales on {{ day_report.date }}</span>
+        <span class="stat-icon ico-green"><i class="fa-solid fa-indian-rupee-sign"></i></span>
+      </div>
+      <div class="stat-num">₹{{ "%.2f"|format(day_report.total) }}</div>
+      <div class="stat-hint">{{ day_report.order_count }} order(s)</div>
+    </div>
+  </div>
+
+  {% if day_report['items'] %}
+  <div class="card card-flush">
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Quantity Sold</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in day_report['items'] %}
+          <tr>
+            <td><strong>{{ it.name|capitalize }}</strong></td>
+            <td>{{ "%.2f"|format(it.qty) }} {{ it.unit }}</td>
+            <td>₹{{ "%.2f"|format(it.amount) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="2" style="text-align: right;">Total</th>
+            <th>₹{{ "%.2f"|format(day_report.total) }}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty-state" style="padding:1.75rem 1rem;">
+      <i class="fa-regular fa-face-meh"></i>
+      No items sold on {{ day_report.date }}.
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+
+<!-- Danger Zone -->
+<section style="margin-bottom: 2rem;">
+  <h3 class="section-title" style="color:var(--ico-red-fg);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--ico-red-fg);"></i> Danger Zone</h3>
+  <div class="card" style="border-left: 4px solid #dc2626;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <strong>Clear all sales history</strong>
+        <div class="muted" style="font-size: .88rem; margin-top: .25rem;">
+          Permanently deletes <strong>every order</strong> and starts the dashboard fresh.
+          Items, prices and stock are kept. <strong>This cannot be undone.</strong>
+        </div>
+      </div>
+      <form method="POST" action="/sales/clear-history" style="margin: 0;"
+            onsubmit="return confirm('DELETE ALL SALES HISTORY?\n\nEvery order will be permanently removed and the dashboard reset to a fresh state. Items and stock are kept.\n\nThis cannot be undone. Continue?');">
+        <button type="submit" class="btn-danger btn-sm"><i class="fa-solid fa-trash"></i> Clear all history</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
