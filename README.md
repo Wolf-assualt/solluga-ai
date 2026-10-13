@@ -63,6 +63,7 @@ flowchart TD
 - 🏪 **Multi-Shop Ready:** Switch between multiple neighborhood stores using `/shops` or `/shop <id>`.
 - ⚠️ **Smart Stock Protection:** Automatically detects out-of-stock items, caps quantities if stock is low, and dispatches real-time low-stock alerts to shop owners.
 - 📱 **Interactive Order Actions:** Customers confirm or cancel orders with one tap. Owners receive interactive Telegram buttons: `[Accept]`, `[Delivered]`, `[Reject]`.
+- 📲 **Payment QR on Confirmation:** When the owner accepts an order, the shop's UPI payment QR is sent to the customer automatically. Owners upload it once via `/setqr` (or set `UPI_QR_PATH` in `.env`).
 - 📊 **Mobile-First Web Dashboard:** Fast, lightweight FastAPI + Jinja2 dashboard for inventory management, real-time sales metrics, and order fulfillment.
 - ⚡ **Resilient AI Pipeline:** Configurable timeouts, automatic retries with exponential backoff, and seamless fallback to a secondary LLM provider.
 
@@ -102,6 +103,9 @@ LLM_MODEL=gemini-3.1-flash-lite
 # Owner Telegram User ID (get via @userinfobot)
 OWNER_TELEGRAM_ID=123456789
 LOW_STOCK_THRESHOLD=3
+
+# Payment QR image (optional) — /setqr upload in Telegram takes priority
+UPI_QR_PATH=/path/to/upi-qr.png
 
 # Dashboard Password
 DASHBOARD_PASSWORD=YuvaNavi123

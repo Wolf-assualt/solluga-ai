@@ -6,6 +6,7 @@ Includes conversation handler for /additem step-by-step flow and callbacks for
 accepting/rejecting/delivering orders.
 """
 
+import io
 import logging
 import os
 from telegram import Update
@@ -39,6 +40,12 @@ from core.inventory import (
     get_todays_sales_total,
     set_price,
     update_order_status,
+)
+from bot.qr import (
+    clear_saved_qr,
+    resolve_qr_path,
+    save_qr_bytes,
+    send_order_qr,
 )
 
 logger = logging.getLogger(__name__)
@@ -346,6 +353,92 @@ async def additem_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 # ---------------------------------------------------------------------------
+# /setqr — payment QR upload (owner)
+# ---------------------------------------------------------------------------
+
+async def cmd_setqr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /setqr          — ask owner to send the QR photo, then save it.
+    /setqr status   — show which QR is currently active.
+    /setqr clear    — remove the uploaded QR (falls back to UPI_QR_PATH).
+    """
+    if await reject_non_owner(update):
+        return
+
+    args = context.args or []
+    sub = args[0].lower() if args else ""
+
+    if sub == "clear":
+        removed = clear_saved_qr()
+        if removed:
+            await update.message.reply_text(
+                "🗑️ Uploaded QR removed.\nFalling back to `UPI_QR_PATH` from .env (if set).",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        else:
+            await update.message.reply_text("ℹ️ No uploaded QR found to remove.")
+        return
+
+    current = resolve_qr_path()
+    if sub == "status":
+        if current:
+            await update.message.reply_text(f"✅ Current QR: `{current}`", parse_mode=ParseMode.MARKDOWN)
+        else:
+            await update.message.reply_text(
+                "⚠️ No QR configured yet. Send one with `/setqr` or set `UPI_QR_PATH` in .env.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        return
+
+    context.user_data["awaiting_qr"] = True
+    status = f"✅ Current QR: `{current}`" if current else "⚠️ No QR configured yet."
+    await update.message.reply_text(
+        f"{status}\n\n"
+        f"📤 Now send your payment QR as a *photo* in this chat.\n"
+        f"It will be sent to customers with every confirmed order.\n\n"
+        f"_Type /cancelqr to abort._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def cmd_cancelqr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Abort an in-progress /setqr photo upload."""
+    context.user_data.pop("awaiting_qr", None)
+    await update.message.reply_text("❌ QR upload cancelled.")
+
+
+async def handle_qr_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Save an uploaded QR photo when the owner is in /setqr mode.
+    Photos from anyone else (or outside /setqr mode) are silently ignored.
+    """
+    user = update.effective_user
+    if not (user and is_owner(user) and context.user_data.get("awaiting_qr")):
+        return
+
+    message = update.message
+    if not message or not message.photo:
+        return
+
+    context.user_data.pop("awaiting_qr", None)
+    try:
+        photo = message.photo[-1]  # largest available size
+        tg_file = await photo.get_file()
+        buf = io.BytesIO()
+        await tg_file.download_to_memory(buf)
+        saved = save_qr_bytes(buf.getvalue())
+    except Exception as exc:
+        logger.exception("Failed to save QR upload: %s", exc)
+        await message.reply_text(f"⚠️ Couldn't save QR image: {exc}")
+        return
+
+    await message.reply_text(
+        "✅ *QR saved!*\nEvery accepted order will now include this QR for payment. 🙏",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Owner Order Action Callbacks (Accept, Reject, Delivered)
 # ---------------------------------------------------------------------------
 
@@ -411,6 +504,16 @@ async def handle_owner_order_callback(update: Update, context: ContextTypes.DEFA
             logger.info("Notified customer %s about order %d -> %s", order.customer_id, order_id, action)
         except Exception as exc:
             logger.warning("Could not notify customer %s: %s", order.customer_id, exc)
+
+        # Order confirmed by owner -> send the payment QR to the customer
+        if action == "accepted":
+            qr_sent = await send_order_qr(
+                context.bot, int(order.customer_id), order_id, order.total
+            )
+            if not qr_sent:
+                await query.message.reply_text(
+                    "⚠️ No payment QR configured — customers can't pay. Send it with /setqr."
+                )
 
 
 def get_additem_conversation_handler() -> ConversationHandler:

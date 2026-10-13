@@ -26,6 +26,9 @@ data/*.db-journal
 data/*.db-shm
 data/*.db-wal
 
+# Uploaded payment QR (runtime data)
+data/qr.png
+
 # Logs and binaries
 *.log
 logs/

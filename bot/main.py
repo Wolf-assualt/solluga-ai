@@ -29,12 +29,15 @@ from bot.handlers import (
 )
 from bot.owner_handlers import (
     cmd_addstock,
+    cmd_cancelqr,
     cmd_orders,
     cmd_sales,
     cmd_setprice,
+    cmd_setqr,
     cmd_stock,
     get_additem_conversation_handler,
     handle_owner_order_callback,
+    handle_qr_photo,
 )
 
 load_dotenv()
@@ -60,6 +63,8 @@ def main() -> None:
     app.add_handler(CommandHandler("orders", cmd_orders))
     app.add_handler(CommandHandler("sales", cmd_sales))
     app.add_handler(get_additem_conversation_handler())
+    app.add_handler(CommandHandler("setqr", cmd_setqr))
+    app.add_handler(CommandHandler("cancelqr", cmd_cancelqr))
     app.add_handler(CallbackQueryHandler(handle_owner_order_callback, pattern=r"^owner:"))
 
     # Customer Handlers (Phase 1 & 4)
@@ -68,6 +73,8 @@ def main() -> None:
     app.add_handler(
         MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message)
     )
+    # Payment QR upload from the owner (must be inside /setqr mode; others ignored)
+    app.add_handler(MessageHandler(filters.PHOTO, handle_qr_photo))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_order_message)
     )
