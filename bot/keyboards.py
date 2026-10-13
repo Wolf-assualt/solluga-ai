@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 CALLBACK_CONFIRM = "order:confirm"
 CALLBACK_CANCEL = "order:cancel"
+CALLBACK_PAYNOW = "order:paynow:"
 
 CALLBACK_OWNER_ACCEPT = "owner:accept:"
 CALLBACK_OWNER_REJECT = "owner:reject:"
@@ -19,6 +20,23 @@ def confirm_cancel_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("✅ Confirm", callback_data=CALLBACK_CONFIRM),
                 InlineKeyboardButton("❌ Cancel", callback_data=CALLBACK_CANCEL),
+            ]
+        ]
+    )
+
+
+def pay_now_keyboard(order_id: int) -> InlineKeyboardMarkup:
+    """Return inline keyboard with a 💳 Pay Now button for the customer.
+
+    Tapping it sends the shop's payment QR on demand. The button stays
+    functional even after the order is delivered (pay-on-delivery / late pay).
+    """
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💳 Pay Now", callback_data=f"{CALLBACK_PAYNOW}{order_id}"
+                )
             ]
         ]
     )

@@ -24,6 +24,7 @@ from bot.keyboards import (
     CALLBACK_OWNER_DELIVERED,
     CALLBACK_OWNER_REJECT,
     owner_order_actions_keyboard,
+    pay_now_keyboard,
 )
 from bot.messages import (
     format_customer_status_update,
@@ -40,12 +41,6 @@ from core.inventory import (
     get_todays_sales_total,
     set_price,
     update_order_status,
-)
-from bot.qr import (
-    clear_saved_qr,
-    resolve_qr_path,
-    save_qr_bytes,
-    send_order_qr,
 )
 
 logger = logging.getLogger(__name__)
@@ -492,7 +487,9 @@ async def handle_owner_order_callback(update: Update, context: ContextTypes.DEFA
         reply_markup=new_keyboard,
     )
 
-    # Notify customer if customer_id is a valid Telegram chat ID
+    # Notify customer if customer_id is a valid Telegram chat ID.
+    # Accepted/delivered updates carry a 💳 Pay Now button — the customer taps
+    # it to receive the payment QR on demand (works even after delivery).
     if order.customer_id and order.customer_id.isdigit():
         try:
             cust_msg = format_customer_status_update(order_id, action)
@@ -500,20 +497,13 @@ async def handle_owner_order_callback(update: Update, context: ContextTypes.DEFA
                 chat_id=int(order.customer_id),
                 text=cust_msg,
                 parse_mode=ParseMode.MARKDOWN,
+                reply_markup=(
+                    pay_now_keyboard(order_id) if action in ("accepted", "delivered") else None
+                ),
             )
             logger.info("Notified customer %s about order %d -> %s", order.customer_id, order_id, action)
         except Exception as exc:
             logger.warning("Could not notify customer %s: %s", order.customer_id, exc)
-
-        # Order confirmed by owner -> send the payment QR to the customer
-        if action == "accepted":
-            qr_sent = await send_order_qr(
-                context.bot, int(order.customer_id), order_id, order.total
-            )
-            if not qr_sent:
-                await query.message.reply_text(
-                    "⚠️ No payment QR configured — customers can't pay. Send it with /setqr."
-                )
 
 
 def get_additem_conversation_handler() -> ConversationHandler:

@@ -13,7 +13,9 @@ from telegram.ext import ContextTypes
 from bot.keyboards import (
     CALLBACK_CANCEL,
     CALLBACK_CONFIRM,
+    CALLBACK_PAYNOW,
     confirm_cancel_keyboard,
+    pay_now_keyboard,
 )
 from bot.messages import (
     format_cancelled,
@@ -23,7 +25,9 @@ from bot.messages import (
     format_order_summary,
     format_welcome,
 )
+from bot.qr import send_order_qr
 from bot.session import clear_draft, get_draft, set_draft
+from core.inventory import get_order_detail
 from core.order import OrderDraft, confirm_order, process_message
 
 logger = logging.getLogger(__name__)
@@ -142,6 +146,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text(
             format_confirmed(order_id, draft.total, original_text),
             parse_mode=ParseMode.MARKDOWN,
+            reply_markup=pay_now_keyboard(order_id),
         )
 
         # Notify shop owner (Phase 2)
@@ -149,7 +154,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             from bot.owner_handlers import get_owner_id
             from bot.keyboards import owner_order_actions_keyboard
             from bot.messages import format_owner_new_order, format_low_stock_alert
-            from core.inventory import get_order_detail, get_low_stock_items
+            from core.inventory import get_low_stock_items
 
             owner_id = get_owner_id()
             if owner_id and owner_id.isdigit():
@@ -188,6 +193,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             format_cancelled(original_text),
             parse_mode=ParseMode.MARKDOWN,
         )
+
+    elif query.data.startswith(CALLBACK_PAYNOW):
+        # Customer tapped 💳 Pay Now -> send the payment QR on demand.
+        # Works at any stage, even after the order is delivered.
+        order_id_str = query.data[len(CALLBACK_PAYNOW):]
+        if not order_id_str.isdigit():
+            await query.message.reply_text("⚠️ Invalid payment link. Please contact the shop.")
+            return
+
+        order = get_order_detail(int(order_id_str))
+        if not order:
+            await query.message.reply_text(f"⚠️ Order #{order_id_str} not found.")
+            return
+
+        stage = "delivered" if order.status == "delivered" else "accepted"
+        sent = await send_order_qr(context.bot, user.id, order.order_id, order.total, stage=stage)
+        if not sent:
+            await query.message.reply_text(
+                "⚠️ Payment QR is not set up yet. Please pay at the shop or contact the owner."
+            )
 
 
 # ---------------------------------------------------------------------------

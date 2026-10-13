@@ -257,8 +257,14 @@ def format_todays_sales(total_sales: float, order_count: int) -> str:
     )
 
 
-def format_qr_payment_caption(order_id: int, total: float) -> str:
-    """Caption sent along with the payment QR after the owner confirms an order."""
+def format_qr_payment_caption(order_id: int, total: float, stage: str = "accepted") -> str:
+    """Caption sent along with the payment QR after the owner confirms/delivers an order."""
+    if stage == "delivered":
+        return (
+            f"🚚 *Order #{order_id} delivered!*\n\n"
+            f"Total: *₹{total:.2f}* — scan & pay with any UPI app (GPay / PhonePe / Paytm).\n"
+            f"Nandri! 🙏"
+        )
     return (
         f"🧾 *Order #{order_id}* — Total: *₹{total:.2f}*\n\n"
         f"Scan & pay with any UPI app (GPay / PhonePe / Paytm).\n"

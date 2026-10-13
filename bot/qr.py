@@ -67,9 +67,14 @@ def clear_saved_qr() -> bool:
     return False
 
 
-async def send_order_qr(bot, chat_id: int, order_id: int, total: float) -> bool:
+async def send_order_qr(
+    bot, chat_id: int, order_id: int, total: float, stage: str = "accepted"
+) -> bool:
     """
     Send the payment QR image to a customer chat with a friendly caption.
+
+    ``stage`` is the owner action that triggered the send ("accepted" or
+    "delivered") — it selects the caption wording.
 
     Returns True if the photo was sent, False if no QR is configured or the
     send failed (failures are logged, never raised — the order flow must not
@@ -82,7 +87,7 @@ async def send_order_qr(bot, chat_id: int, order_id: int, total: float) -> bool:
         logger.warning("No payment QR configured; skipping QR send for order #%d", order_id)
         return False
 
-    caption = format_qr_payment_caption(order_id, total)
+    caption = format_qr_payment_caption(order_id, total, stage=stage)
     try:
         with qr_path.open("rb") as fh:
             await bot.send_photo(
