@@ -119,8 +119,12 @@ python data/seed.py
 
 Run the included convenience script:
 ```bash
-./run.sh
+./run.sh     # Linux / macOS
+run.bat      # Windows (double-click, or run from cmd)
 ```
+Both scripts start the Web Dashboard + Telegram Bot together (and a Cloudflare
+quick tunnel when WhatsApp is configured) and stop everything with one action:
+`Ctrl+C` on Linux, any key in the launcher window on Windows.
 
 Or run services individually:
 ```bash

@@ -35,7 +35,8 @@ Solluga AI/
 ├── .env.example               # Template for environment variables
 ├── .gitignore                 # Excludes .env and other secrets
 ├── requirements.txt           # Python dependencies
-├── run.sh                     # Launch both Telegram bot & Web dashboard
+├── run.sh                     # Launch both Telegram bot & Web dashboard (Linux/macOS)
+├── run.bat                    # Launch both Telegram bot & Web dashboard (Windows)
 │
 ├── bot/
 │   ├── __init__.py
