@@ -47,3 +47,50 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 .mypy_cache/
+
+# --- Added during GitHub publish ---
+# Environment files (keep templates)
+.env.*
+!.env.example
+.env.local
+
+# Databases & local data
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets / certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets/
+credentials.json
+client_secret*.json
+
+# Agent / tool state
+.kilo/
+.kilocode/
+
+# Node (if tooling is added later)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Caches
+.ruff_cache/
+.tox/
+.nox/
+.cache/
+.venv*/
+venv*/
+
+# Backups / temp
+*.bak
+*.orig
+*~
+*.tmp
