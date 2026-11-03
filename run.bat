@@ -3,7 +3,7 @@ rem ============================================================================
 rem  Sollunga AI - Run Bot & Web Dashboard Together (Windows)
 rem  Windows equivalent of run.sh
 rem
-rem  - Starts the FastAPI web dashboard on port 8000 (minimized window)
+rem  - Starts the FastAPI web dashboard on port 2626 (minimized window)
 rem  - Optionally starts a Cloudflare quick tunnel when WhatsApp is configured
 rem  - Starts the Telegram bot in its own window
 rem  - Press any key in THIS window to stop all services
@@ -34,10 +34,10 @@ echo ==========================================================
 echo  Starting Sollunga AI Services...
 echo ==========================================================
 
-rem ---- Web Dashboard on port 8000 -------------------------------------------
-echo [Web] Starting Web Dashboard at: http://localhost:8000
+rem ---- Web Dashboard on port 2626 -------------------------------------------
+echo [Web] Starting Web Dashboard at: http://localhost:2626
 echo       (Owner password: check DASHBOARD_PASSWORD in .env)
-start "Sollunga Web" /min cmd /c ".venv\Scripts\python.exe -m uvicorn web.app:app --host 0.0.0.0 --port 8000 > logs\web.log 2>&1"
+start "Sollunga Web" /min cmd /c ".venv\Scripts\python.exe -m uvicorn web.app:app --host 0.0.0.0 --port 2626 > logs\web.log 2>&1"
 
 rem Give the web server a moment to bind the port before the tunnel starts
 timeout /t 2 /nobreak >nul
@@ -50,7 +50,7 @@ if not defined WA_OK goto :no_tunnel
 if not exist "bin\cloudflared.exe" goto :no_tunnel
 
 echo [TUN] WhatsApp configured - starting public tunnel for webhook...
-start "Sollunga Tunnel" /min cmd /c "bin\cloudflared.exe tunnel --url http://localhost:8000 > logs\tunnel.log 2>&1"
+start "Sollunga Tunnel" /min cmd /c "bin\cloudflared.exe tunnel --url http://localhost:2626 > logs\tunnel.log 2>&1"
 
 rem Wait for the quick-tunnel URL to appear in the log (up to 15 seconds)
 set "TUNNEL_URL="
@@ -77,7 +77,7 @@ echo [i]   WhatsApp not configured (or bin\cloudflared.exe missing) - Telegram-o
 :summary
 echo.
 echo [OK]  All Sollunga AI services are running!
-echo    - Local Web Dashboard: http://localhost:8000
+echo    - Local Web Dashboard: http://localhost:2626
 if not defined TUNNEL_URL goto :summary_bot
 echo    - Public Webhook URL:  %TUNNEL_URL%/whatsapp/webhook
 echo      Paste it in Meta Developer Console - WhatsApp - Configuration - Webhook
@@ -93,8 +93,8 @@ echo [..]  Stopping all Sollunga AI services...
 taskkill /F /T /FI "WINDOWTITLE eq Sollunga Web*" >nul 2>&1
 taskkill /F /T /FI "WINDOWTITLE eq Sollunga Tunnel*" >nul 2>&1
 taskkill /F /T /FI "WINDOWTITLE eq Sollunga Bot*" >nul 2>&1
-rem Safety net: free port 8000 and stop any stray cloudflared
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"TCP.*:8000 .*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+rem Safety net: free port 2626 and stop any stray cloudflared
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"TCP.*:2626 .*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
 taskkill /F /IM cloudflared.exe >nul 2>&1
 echo [OK]  All services stopped.
 endlocal

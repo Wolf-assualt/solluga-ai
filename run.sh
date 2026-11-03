@@ -31,10 +31,10 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM EXIT
 
-# Start Web Dashboard on port 8000
-echo "🌐 Starting Web Dashboard at: http://localhost:8000"
+# Start Web Dashboard on port 2626
+echo "🌐 Starting Web Dashboard at: http://localhost:2626"
 echo "   (Owner password: check DASHBOARD_PASSWORD in .env)"
-.venv/bin/uvicorn web.app:app --host 0.0.0.0 --port 8000 > /tmp/sollunga_web.log 2>&1 &
+.venv/bin/python -m uvicorn web.app:app --host 0.0.0.0 --port 2626 > /tmp/sollunga_web.log 2>&1 &
 WEB_PID=$!
 
 # Wait a second for web server to initialize
@@ -50,7 +50,7 @@ fi
 TUNNEL_URL=""
 if [ "$WA_CONFIGURED" = "1" ] && [ -f "bin/cloudflared" ]; then
     echo "🌍 WhatsApp configured — starting public tunnel for webhook..."
-    ./bin/cloudflared tunnel --url http://localhost:8000 > /tmp/sollunga_tunnel.log 2>&1 &
+    ./bin/cloudflared tunnel --url http://localhost:2626 > /tmp/sollunga_tunnel.log 2>&1 &
     TUNNEL_PID=$!
     
     # Wait for tunnel URL to generate
@@ -72,7 +72,7 @@ BOT_PID=$!
 
 echo ""
 echo "🚀 All Sollunga AI services are running!"
-echo "   • Local Web Dashboard: http://localhost:8000"
+echo "   • Local Web Dashboard: http://localhost:2626"
 if [ -n "$TUNNEL_URL" ]; then
     echo "   • Public Webhook URL:  ${TUNNEL_URL}/whatsapp/webhook"
     echo "     (Paste this in Meta Developer Console -> WhatsApp -> Configuration -> Webhook)"
@@ -83,4 +83,3 @@ echo "----------------------------------------------------------"
 
 # Keep the script running and wait for background processes
 wait $WEB_PID $BOT_PID ${TUNNEL_PID:-}
-

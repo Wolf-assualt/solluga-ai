@@ -23,7 +23,7 @@ COPY . .
 RUN mkdir -p data
 
 # Expose web dashboard & webhook port
-EXPOSE 8000
+EXPOSE 2626
 
 # Default command starts the web dashboard and health endpoint
-CMD ["sh", "-c", "python data/seed.py && uvicorn web.app:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python data/seed.py && uvicorn web.app:app --host 0.0.0.0 --port 2626"]

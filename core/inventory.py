@@ -283,6 +283,7 @@ def get_todays_orders(shop_id: Optional[int] = None) -> list[OrderSummary]:
     return summaries
 
 
+
 def get_todays_sales_total(shop_id: Optional[int] = None) -> float:
     """
     Return today's sales total for confirmed/accepted/delivered orders.
@@ -410,7 +411,7 @@ def _sum_sales(
     return float(con.execute(sql, params).fetchone()["s"])
 
 
-def get_sales_summary(shop_id: Optional[int] = None) -> dict:
+def get_sales_summary(shop_id: Optional[int] = None) -> dict[str, float | str | None]:
     """
     Return sales figures for the dashboard.
 
@@ -709,4 +710,3 @@ def get_orders_list(
                 )
             )
     return summaries
-

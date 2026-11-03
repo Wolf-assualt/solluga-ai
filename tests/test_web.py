@@ -4,16 +4,19 @@ tests/test_web.py — Unit tests for Phase 3 web dashboard routes and authentica
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from pathlib import Path
+
 import pytest
-from unittest.mock import patch
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 
 from web.app import app
-from web.auth import create_session_token, _COOKIE_NAME
+from web.auth import get_dashboard_password
 
 
 @pytest.fixture
-def temp_db(tmp_path):
+def temp_db(tmp_path: Path) -> Iterator[str]:
     """Set up an isolated temporary SQLite DB with test schema and seed items."""
     db_file = tmp_path / "test_sollunga_web.db"
     con = sqlite3.connect(str(db_file))
@@ -67,37 +70,36 @@ def temp_db(tmp_path):
 
 
 @pytest.fixture
-def client(temp_db):
+def client(temp_db: str) -> TestClient:
     """Test client with mocked database."""
+    assert Path(temp_db).is_file()
     return TestClient(app)
 
 
 @pytest.fixture
-def auth_client(client):
+def auth_client(client: TestClient) -> TestClient:
     """Test client pre-authenticated with valid session cookie."""
-    token = create_session_token("owner")
-    client.cookies.set(_COOKIE_NAME, token)
+    client.post("/login", data={"password": get_dashboard_password()})
     return client
 
 
 class TestAuthentication:
-    def test_unauthenticated_redirects_to_login(self, client):
+    def test_unauthenticated_redirects_to_login(self, client: TestClient) -> None:
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
 
-    def test_login_page_renders(self, client):
+    def test_login_page_renders(self, client: TestClient) -> None:
         response = client.get("/login")
         assert response.status_code == 200
         assert "Owner Password" in response.text
 
-    def test_login_invalid_password(self, client):
+    def test_login_invalid_password(self, client: TestClient) -> None:
         response = client.post("/login", data={"password": "wrongpassword"})
         assert response.status_code == 401
         assert "Invalid owner password" in response.text
 
-    def test_login_valid_password(self, client):
-        from web.auth import get_dashboard_password
+    def test_login_valid_password(self, client: TestClient) -> None:
         valid_pwd = get_dashboard_password()
         response = client.post(
             "/login",
@@ -106,24 +108,24 @@ class TestAuthentication:
         )
         assert response.status_code == 303
         assert response.headers["location"] == "/"
-        assert _COOKIE_NAME in response.cookies
+        assert response.headers.get("set-cookie")
 
 
 class TestDashboardPages:
-    def test_home_page_renders_with_stats(self, auth_client):
+    def test_home_page_renders_with_stats(self, auth_client: TestClient) -> None:
         response = auth_client.get("/")
         assert response.status_code == 200
         assert "Today&#39;s Orders" in response.text or "Today's Orders" in response.text
         assert "Today&#39;s Sales" in response.text or "Today's Sales" in response.text
         assert "Sugar" in response.text  # Sugar is low stock
 
-    def test_items_page_list(self, auth_client):
+    def test_items_page_list(self, auth_client: TestClient) -> None:
         response = auth_client.get("/items")
         assert response.status_code == 200
         assert "Rice" in response.text
         assert "Sugar" in response.text
 
-    def test_add_new_item_flow(self, auth_client):
+    def test_add_new_item_flow(self, auth_client: TestClient) -> None:
         # Render form
         resp_form = auth_client.get("/items/new")
         assert resp_form.status_code == 200
@@ -143,7 +145,7 @@ class TestDashboardPages:
         assert resp_post.status_code == 200
         assert "Coffee" in resp_post.text
 
-    def test_edit_item_flow(self, auth_client):
+    def test_edit_item_flow(self, auth_client: TestClient) -> None:
         # Post edit for rice (id 1)
         resp_edit = auth_client.post(
             "/items/edit/1",
@@ -158,7 +160,7 @@ class TestDashboardPages:
         assert resp_edit.status_code == 200
         assert "62.00" in resp_edit.text
 
-    def test_delete_item_flow(self, auth_client):
+    def test_delete_item_flow(self, auth_client: TestClient) -> None:
         resp_delete = auth_client.post("/items/delete/2", follow_redirects=True)
         assert resp_delete.status_code == 200
         # Sugar should no longer be listed
@@ -166,7 +168,7 @@ class TestDashboardPages:
 
 
 class TestOrdersManagement:
-    def test_orders_page_and_status_transition(self, auth_client, temp_db):
+    def test_orders_page_and_status_transition(self, auth_client: TestClient, temp_db: str) -> None:
         con = sqlite3.connect(temp_db)
         cur = con.cursor()
         cur.execute("INSERT INTO orders (customer_id, status, total) VALUES ('98765', 'confirmed', 110.0)")
@@ -192,7 +194,13 @@ class TestOrdersManagement:
 
 
 class TestSalesReports:
-    def _insert_order(self, db, total, status="confirmed", created_at=None):
+    def _insert_order(
+        self,
+        db: str,
+        total: float,
+        status: str = "confirmed",
+        created_at: str | None = None,
+    ) -> None:
         con = sqlite3.connect(db)
         if created_at:
             con.execute(
@@ -207,12 +215,12 @@ class TestSalesReports:
         con.commit()
         con.close()
 
-    def test_sales_page_requires_auth(self, client):
+    def test_sales_page_requires_auth(self, client: TestClient) -> None:
         response = client.get("/sales", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
 
-    def test_sales_page_renders(self, auth_client):
+    def test_sales_page_renders(self, auth_client: TestClient) -> None:
         response = auth_client.get("/sales")
         assert response.status_code == 200
         assert "Total Sold" in response.text
@@ -220,7 +228,7 @@ class TestSalesReports:
         assert "This Month" in response.text
         assert "Single-Day Report" in response.text
 
-    def test_reset_button_zeroes_total(self, auth_client, temp_db):
+    def test_reset_button_zeroes_total(self, auth_client: TestClient, temp_db: str) -> None:
         self._insert_order(temp_db, 200.0, "confirmed")
 
         before = auth_client.get("/sales")
@@ -243,7 +251,7 @@ class TestSalesReports:
         assert s["total_since_reset"] == 0.0
         assert s["total_all_time"] == 200.0
 
-    def test_single_day_lookup(self, auth_client, temp_db):
+    def test_single_day_lookup(self, auth_client: TestClient, temp_db: str) -> None:
         self._insert_order(temp_db, 120.0, "confirmed", "2026-01-15 10:00:00")
         self._insert_order(temp_db, 80.0, "confirmed", "2026-01-16 10:00:00")
 
@@ -252,17 +260,21 @@ class TestSalesReports:
         assert "2026-01-15" in response.text
         assert "120.00" in response.text
 
-    def test_invalid_day_shows_error(self, auth_client):
+    def test_invalid_day_shows_error(self, auth_client: TestClient) -> None:
         response = auth_client.get("/sales?day=not-a-date")
         assert response.status_code == 200
         assert "not a valid date" in response.text
 
-    def test_clear_history_requires_auth(self, client):
+    def test_clear_history_requires_auth(self, client: TestClient) -> None:
         response = client.post("/sales/clear-history", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
 
-    def test_clear_history_wipes_orders_and_keeps_items(self, auth_client, temp_db):
+    def test_clear_history_wipes_orders_and_keeps_items(
+        self,
+        auth_client: TestClient,
+        temp_db: str,
+    ) -> None:
         self._insert_order(temp_db, 100.0, "confirmed")
         self._insert_order(temp_db, 250.0, "delivered")
 

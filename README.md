@@ -108,7 +108,7 @@ LOW_STOCK_THRESHOLD=3
 UPI_QR_PATH=/path/to/upi-qr.png
 
 # Dashboard Password
-DASHBOARD_PASSWORD=YuvaNavi123
+DASHBOARD_PASSWORD=Yuva
 SECRET_KEY=super-secret-key-change-me
 ```
 
@@ -136,11 +136,11 @@ Or run services individually:
 python bot/main.py
 
 # Terminal 2: Web Dashboard & WhatsApp Webhook
-uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn web.app:app --host 0.0.0.0 --port 2626 --reload
 ```
 
-Visit the Web Dashboard at: **`http://localhost:8000`** (Password: `YuvaNavi123`)  
-System health status: **`http://localhost:8000/health`**
+Visit the Web Dashboard at: **`http://localhost:2626`** (Password: `YuvaNavi123`)  
+System health status: **`http://localhost:2626/health`**
 
 ---
 
@@ -153,7 +153,7 @@ Run the complete Sollunga stack containerized:
 docker build -t sollunga-ai .
 
 # Run the container
-docker run -p 8000:8000 --env-file .env sollunga-ai
+docker run -p 2626:2626 --env-file .env sollunga-ai
 ```
 
 ---
@@ -164,7 +164,7 @@ docker run -p 8000:8000 --env-file .env sollunga-ai
 2. In the WhatsApp API Setup page, obtain your **Test Phone Number ID** and **Temporary Access Token**.
 3. Set your webhook URL using Cloudflare Tunnel or ngrok:
    ```bash
-   ngrok http 8000
+   ngrok http 2626
    ```
 4. In the Meta Developer App Dashboard under WhatsApp Webhook:
    - **Callback URL:** `https://<your-ngrok-url>/whatsapp/webhook`
@@ -200,7 +200,7 @@ Total: ₹260.00
 [Accept]   [Delivered]   [Reject]
 ```
 
-### Mobile Web Dashboard (`http://localhost:8000`)
+### Mobile Web Dashboard (`http://localhost:2626`)
 - **Dashboard Home:** Today's Orders, Today's Sales Revenue (₹), Low-stock alerts badge.
 - **Sales & Reports:** A **Reset sales** button that zeroes Total, Today, This Week and This Month (orders and history are kept), a single-day report with a per-item breakdown, and a guarded **Clear all history** danger-zone button that permanently deletes every order to start a brand-new dashboard (items, prices and stock are kept).
 - **Items Catalog:** Real-time stock counts, price adjustments, and item creation.
