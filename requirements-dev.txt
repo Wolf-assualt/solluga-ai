@@ -1,0 +1,4 @@
+# Dev-only tooling (tests, screenshots, README charts). Runtime deps stay in requirements.txt.
+-r requirements.txt
+playwright>=1.47
+matplotlib>=3.8

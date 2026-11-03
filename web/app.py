@@ -41,6 +41,7 @@ from web.auth import (
     get_dashboard_password,
     require_auth,
 )
+from core.analytics import get_dashboard_data
 
 load_dotenv()
 
@@ -171,6 +172,30 @@ async def home_page(request: Request, user: str = Depends(require_auth)):
             "low_threshold": low_threshold,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Analytics Dashboard (Chart.js)
+# ---------------------------------------------------------------------------
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(
+    request: Request, shop_id: Optional[int] = None, user: str = Depends(require_auth)
+):
+    data = get_dashboard_data(shop_id=shop_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={"user": user, "data": data},
+    )
+
+
+@app.get("/api/dashboard")
+async def dashboard_api(
+    shop_id: Optional[int] = None, days: int = 30, user: str = Depends(require_auth)
+):
+    """JSON feed behind the analytics dashboard (KPIs + chart series)."""
+    return get_dashboard_data(shop_id=shop_id, days=days)
 
 
 # ---------------------------------------------------------------------------

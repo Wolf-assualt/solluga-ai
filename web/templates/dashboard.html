@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics — Sollunga{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+{% block page_subtitle %}Revenue, order flow and inventory health at a glance{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Chart palette — validated for colour-blind separation & contrast (light + dark) */
+  :root {
+    --chart-1: #6366f1;   /* primary series */
+    --chart-2: #d97706;   /* contrast series (not sold) */
+    --chart-low: #dc2626; /* low-stock state */
+  }
+  :root[data-theme="dark"] {
+    --chart-1: #7c83f5;
+    --chart-2: #c47a0a;
+    --chart-low: #ef4444;
+  }
+  .dash-filter { display: flex; align-items: center; gap: .5rem; margin: 0; }
+  .dash-filter select { margin: 0; padding: .35rem 2rem .35rem .7rem; font-size: .85rem; height: auto; min-width: 11rem; }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.1rem;
+  }
+  .chart-grid .card { margin-bottom: 0; min-width: 0; }
+  .chart-grid .card.span-2 { grid-column: 1 / -1; }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  .chart-head .section-title { margin: 0; }
+  .chart-sub { font-size: .8rem; color: var(--muted); }
+  .chart-box { position: relative; height: 280px; }
+  .chart-box.tall { height: 320px; }
+  .chart-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+  .chart-legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .chart-legend i.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .chart-legend i.sw-line { width: 14px; height: 0; border-top: 2px dashed var(--muted); border-radius: 0; }
+  .chart-empty { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: .9rem; text-align: center; }
+  .chart-table { margin-top: .75rem; font-size: .8rem; }
+  .chart-table summary { cursor: pointer; color: var(--muted); }
+  .chart-table table { margin: .5rem 0 0; font-size: .8rem; }
+  .dash-note { font-size: .8rem; color: var(--muted); margin-top: 1.1rem; }
+  @media (max-width: 900px) {
+    .chart-grid { grid-template-columns: minmax(0, 1fr); }
+    .chart-box, .chart-box.tall { height: 250px; }
+    .dash-filter select { min-width: 0; }
+  }
+</style>
+{% endblock %}
+
+{% block page_actions %}
+<form class="dash-filter" method="get" action="/dashboard">
+  <label for="shopFilter" class="sr-only" style="position:absolute;left:-9999px;">Shop</label>
+  <select id="shopFilter" name="shop_id" onchange="this.form.submit()">
+    <option value="" {% if data.shop_id is none %}selected{% endif %}>All shops</option>
+    {% for s in data.shops %}
+    <option value="{{ s.id }}" {% if data.shop_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">Apply</button></noscript>
+</form>
+{% endblock %}
+
+{% block content %}
+{% set k = data.kpis %}
+<div class="stat-grid">
+  <div class="stat-card accent-indigo">
+    <div class="stat-top">
+      <span class="stat-label">Revenue (all time)</span>
+      <span class="stat-icon ico-indigo"><i class="fa-solid fa-indian-rupee-sign"></i></span>
+    </div>
+    <div class="stat-num">₹{{ "{:,.2f}".format(k.revenue_total) }}</div>
+    <div class="stat-hint">₹{{ "{:,.0f}".format(k.revenue_window) }} in the last {{ data.days }} days</div>
+  </div>
+
+  <div class="stat-card accent-green">
+    <div class="stat-top">
+      <span class="stat-label">Orders</span>
+      <span class="stat-icon ico-green"><i class="fa-solid fa-receipt"></i></span>
+    </div>
+    <div class="stat-num">{{ k.orders_total }}</div>
+    <div class="stat-hint">{{ k.orders_sold }} sold (confirmed, accepted, delivered)</div>
+  </div>
+
+  <div class="stat-card accent-amber">
+    <div class="stat-top">
+      <span class="stat-label">Avg. order value</span>
+      <span class="stat-icon ico-amber"><i class="fa-solid fa-basket-shopping"></i></span>
+    </div>
+    <div class="stat-num">₹{{ "{:,.2f}".format(k.avg_order_value) }}</div>
+    <div class="stat-hint">Per sold order</div>
+  </div>
+
+  <div class="stat-card accent-red">
+    <div class="stat-top">
+      <span class="stat-label">Low-stock items</span>
+      <span class="stat-icon ico-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
+    </div>
+    <div class="stat-num">{{ k.low_stock_count }}</div>
+    <div class="stat-hint">of {{ k.item_count }} items at ≤ {{ data.low_stock_threshold }} units</div>
+  </div>
+</div>
+
+<div class="chart-grid">
+  <section class="card span-2" aria-labelledby="t-rev">
+    <div class="chart-head">
+      <h3 class="section-title" id="t-rev"><i class="fa-solid fa-chart-line"></i> Daily revenue — last {{ data.days }} days</h3>
+      <span class="chart-sub">Sold orders only · ₹ per day</span>
+    </div>
+    <div class="chart-box">
+      {% if k.orders_sold %}<canvas id="revenueChart" role="img" aria-label="Line chart of daily revenue"></canvas>
+      {% else %}<div class="chart-empty">No sold orders yet — revenue will appear here.</div>{% endif %}
+    </div>
+    <details class="chart-table">
+      <summary>View as table</summary>
+      <table>
+        <thead><tr><th>Date</th><th>Orders</th><th>Revenue</th></tr></thead>
+        <tbody>
+        {% for d in data.revenue_by_day.labels %}{% if data.revenue_by_day.orders[loop.index0] %}
+          <tr><td>{{ d }}</td><td>{{ data.revenue_by_day.orders[loop.index0] }}</td><td>₹{{ "%.2f"|format(data.revenue_by_day['values'][loop.index0]) }}</td></tr>
+        {% endif %}{% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="t-status">
+    <div class="chart-head">
+      <h3 class="section-title" id="t-status"><i class="fa-solid fa-list-check"></i> Orders by status</h3>
+      <div class="chart-legend">
+        <span><i class="sw" style="background:var(--chart-1)"></i>Counts as sold</span>
+        <span><i class="sw" style="background:var(--chart-2)"></i>Not sold</span>
+      </div>
+    </div>
+    <div class="chart-box">
+      {% if k.orders_total %}<canvas id="statusChart" role="img" aria-label="Bar chart of orders by status"></canvas>
+      {% else %}<div class="chart-empty">No orders yet.</div>{% endif %}
+    </div>
+    <details class="chart-table">
+      <summary>View as table</summary>
+      <table>
+        <thead><tr><th>Status</th><th>Orders</th></tr></thead>
+        <tbody>
+        {% for s in data.orders_by_status.labels %}
+          <tr><td>{{ s|capitalize }}</td><td>{{ data.orders_by_status['values'][loop.index0] }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="t-top">
+    <div class="chart-head">
+      <h3 class="section-title" id="t-top"><i class="fa-solid fa-ranking-star"></i> Top items by revenue</h3>
+      <span class="chart-sub">Top {{ data.top_items.labels|length }} · sold orders</span>
+    </div>
+    <div class="chart-box">
+      {% if data.top_items.labels %}<canvas id="topItemsChart" role="img" aria-label="Bar chart of top items by revenue"></canvas>
+      {% else %}<div class="chart-empty">No items sold yet.</div>{% endif %}
+    </div>
+    <details class="chart-table">
+      <summary>View as table</summary>
+      <table>
+        <thead><tr><th>Item</th><th>Qty sold</th><th>Revenue</th></tr></thead>
+        <tbody>
+        {% for n in data.top_items.labels %}
+          <tr><td>{{ n }}</td><td>{{ data.top_items.qty[loop.index0] }} {{ data.top_items.units[loop.index0] }}</td><td>₹{{ "%.2f"|format(data.top_items['values'][loop.index0]) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <section class="card span-2" aria-labelledby="t-stock">
+    <div class="chart-head">
+      <h3 class="section-title" id="t-stock"><i class="fa-solid fa-boxes-stacked"></i> Stock level per item</h3>
+      <div class="chart-legend">
+        <span><i class="sw" style="background:var(--chart-1)"></i>In stock</span>
+        <span><i class="sw" style="background:var(--chart-low)"></i>Low stock</span>
+        <span><i class="sw sw-line"></i>Threshold ({{ data.low_stock_threshold }})</span>
+      </div>
+    </div>
+    <div class="chart-box tall">
+      {% if data.stock_levels.labels %}<canvas id="stockChart" role="img" aria-label="Bar chart of stock per item"></canvas>
+      {% else %}<div class="chart-empty">No items in inventory yet.</div>{% endif %}
+    </div>
+    <details class="chart-table">
+      <summary>View as table</summary>
+      <table>
+        <thead><tr><th>Item</th><th>Stock</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for n in data.stock_levels.labels %}
+          <tr><td>{{ n }}</td><td>{{ data.stock_levels['values'][loop.index0] }} {{ data.stock_levels.units[loop.index0] }}</td><td>{% if data.stock_levels.low[loop.index0] %}Low{% else %}OK{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+</div>
+
+<p class="dash-note">
+  <i class="fa-solid fa-circle-info"></i>
+  Revenue counts confirmed, accepted and delivered orders for all time. The resettable counter lives on
+  <a href="/sales">Sales &amp; Reports</a>. Raw data: <a href="/api/dashboard{% if data.shop_id %}?shop_id={{ data.shop_id }}{% endif %}">/api/dashboard</a>.
+</p>
+
+<script id="dash-data" type="application/json">{{ data|tojson }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+        integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById('dash-data').textContent);
+  var SOLD = ['confirmed', 'accepted', 'delivered'];
+  var charts = [];
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function token(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  function alpha(hex, a) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+    var n = parseInt(h, 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  function rupees(v) {
+    return '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  }
+  function rupeesShort(v) {
+    v = Number(v);
+    if (Math.abs(v) >= 1000) return '₹' + (v / 1000).toLocaleString('en-IN', { maximumFractionDigits: 1 }) + 'k';
+    return '₹' + v;
+  }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function shortDate(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+
+  function render() {
+    if (typeof Chart === 'undefined') return;
+    charts.forEach(function (c) { c.destroy(); });
+    charts = [];
+
+    var c1 = token('--chart-1'), c2 = token('--chart-2'), cLow = token('--chart-low');
+    var muted = token('--muted'), line = token('--line'), ink = token('--ink'), card = token('--card');
+
+    Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = muted;
+    Chart.defaults.borderColor = line;
+    Chart.defaults.animation = reduceMotion ? false : { duration: 500 };
+    Chart.defaults.plugins.legend.display = false;
+    Chart.defaults.plugins.tooltip.backgroundColor = card;
+    Chart.defaults.plugins.tooltip.titleColor = ink;
+    Chart.defaults.plugins.tooltip.bodyColor = ink;
+    Chart.defaults.plugins.tooltip.borderColor = line;
+    Chart.defaults.plugins.tooltip.borderWidth = 1;
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.displayColors = false;
+
+    var grid = { color: line, drawTicks: false };
+    var noGrid = { display: false };
+    var bar = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 26, borderWidth: 0 };
+
+    // 1. Daily revenue (line, crosshair-style index tooltip)
+    var rev = document.getElementById('revenueChart');
+    if (rev) {
+      var rd = data.revenue_by_day;
+      charts.push(new Chart(rev, {
+        type: 'line',
+        data: {
+          labels: rd.labels.map(shortDate),
+          datasets: [{
+            label: 'Revenue', data: rd.values,
+            borderColor: c1, backgroundColor: alpha(c1, 0.12), fill: true,
+            borderWidth: 2, tension: 0.3, pointRadius: 0, pointHoverRadius: 5,
+            pointHoverBackgroundColor: c1, pointHoverBorderColor: card, pointHoverBorderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { grid: noGrid, ticks: { maxRotation: 0, autoSkipPadding: 18 } },
+            y: { beginAtZero: true, grid: grid, border: { display: false }, ticks: { callback: rupeesShort, padding: 8 } }
+          },
+          plugins: {
+            tooltip: { callbacks: {
+              title: function (items) { return rd.labels[items[0].dataIndex]; },
+              label: function (ctx) {
+                return [rupees(ctx.parsed.y) + ' revenue', rd.orders[ctx.dataIndex] + ' sold orders'];
+              }
+            } }
+          }
+        }
+      }));
+    }
+
+    // 2. Orders by status (horizontal bar, sold vs not sold)
+    var st = document.getElementById('statusChart');
+    if (st) {
+      var sd = data.orders_by_status;
+      charts.push(new Chart(st, {
+        type: 'bar',
+        data: {
+          labels: sd.labels.map(cap),
+          datasets: [Object.assign({
+            label: 'Orders', data: sd.values,
+            backgroundColor: sd.labels.map(function (s) { return SOLD.indexOf(s) >= 0 ? c1 : c2; })
+          }, bar)]
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { beginAtZero: true, grid: grid, border: { display: false }, ticks: { precision: 0 } },
+            y: { grid: noGrid, ticks: { color: ink } }
+          },
+          plugins: { tooltip: { callbacks: {
+            label: function (ctx) {
+              var s = sd.labels[ctx.dataIndex];
+              return ctx.parsed.x + ' orders · ' + (SOLD.indexOf(s) >= 0 ? 'counts as sold' : 'not sold');
+            }
+          } } }
+        }
+      }));
+    }
+
+    // 3. Top items by revenue (horizontal bar)
+    var top = document.getElementById('topItemsChart');
+    if (top) {
+      var td = data.top_items;
+      charts.push(new Chart(top, {
+        type: 'bar',
+        data: { labels: td.labels, datasets: [Object.assign({ label: 'Revenue', data: td.values, backgroundColor: c1 }, bar)] },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { beginAtZero: true, grid: grid, border: { display: false }, ticks: { callback: rupeesShort, maxRotation: 0, maxTicksLimit: 6 } },
+            y: { grid: noGrid, ticks: { color: ink } }
+          },
+          plugins: { tooltip: { callbacks: {
+            label: function (ctx) {
+              return [rupees(ctx.parsed.x) + ' revenue', td.qty[ctx.dataIndex] + ' ' + td.units[ctx.dataIndex] + ' sold'];
+            }
+          } } }
+        }
+      }));
+    }
+
+    // 4. Stock per item (bar + dashed threshold line)
+    var sk = document.getElementById('stockChart');
+    if (sk) {
+      var kd = data.stock_levels;
+      var threshold = data.low_stock_threshold;
+      charts.push(new Chart(sk, {
+        data: {
+          labels: kd.labels,
+          datasets: [
+            Object.assign({
+              type: 'bar', label: 'Stock', data: kd.values, order: 2,
+              backgroundColor: kd.low.map(function (l) { return l ? cLow : c1; })
+            }, bar),
+            {
+              type: 'line', label: 'Low-stock threshold', order: 1,
+              data: kd.labels.map(function () { return threshold; }),
+              borderColor: muted, borderWidth: 2, borderDash: [6, 4],
+              pointRadius: 0, pointHoverRadius: 0, fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: true },
+          scales: {
+            x: { grid: noGrid, ticks: { color: ink, maxRotation: 45, autoSkip: false, font: { size: 11 } } },
+            y: { beginAtZero: true, grid: grid, border: { display: false }, ticks: { padding: 8 } }
+          },
+          plugins: { tooltip: {
+            filter: function (item) { return item.dataset.type === 'bar'; },
+            callbacks: {
+              label: function (ctx) {
+                var i = ctx.dataIndex;
+                return ctx.parsed.y + ' ' + kd.units[i] + (kd.low[i] ? ' · LOW (≤ ' + threshold + ')' : ' in stock');
+              }
+            }
+          } }
+        }
+      }));
+    }
+
+    window.__dashboardReady = true;
+  }
+
+  render();
+  // Re-theme charts when the dark-mode toggle flips <html data-theme>
+  new MutationObserver(function () { window.__dashboardReady = false; render(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+{% endblock %}
